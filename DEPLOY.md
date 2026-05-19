@@ -1,232 +1,179 @@
-# Deploy Manual — WINEZONE Procurement Demo
+# Installation & Deploy Manual — CELR Procurement
 
-A complete, step-by-step guide to taking this folder from your laptop to a
-live public URL on Render. **Zero prior knowledge of Render or Postgres
-assumed.** Follow the parts in order; each step tells you what success
-looks like before you move on.
+Step-by-step guide to running this app locally and shipping it to Render
+as a public URL. **Zero prior knowledge of React or Render assumed.**
+Follow the Parts in order; each step tells you what success looks like
+before you move on.
 
-**Total time:** ~45 minutes (10 minutes of clicking + a 20-minute
-unattended seed running on Render + 10 minutes of testing).
+**Repo:** https://github.com/hellou2xai/celr_1st
 
-**What you will end up with:**
-- A public URL like `https://winezone-demo.onrender.com/` with a landing
-  page documenting the demo.
-- A dashboard at `/dashboard` with live charts.
-- An MCP endpoint at `/mcp/` you can plug into Claude Code or Claude
-  Desktop.
+**What you'll end up with:**
+- A web app at `https://<your-service>.onrender.com/`
+- Magic-link sign-in (allowlisted email addresses only)
+- 23 procurement pages (Dashboard, Open POs, Sales Analytics, Risk Calc, etc.)
+- Right-click drill-down modal on any UPC
+- An MCP server at `/mcp/` for Claude clients
 
 ---
 
-## Where you will be working
+## Where you'll be working
 
-This deploy moves between three places. Every Part below is tagged with
-the location where you'll spend that step:
+Every Part below is tagged with the location it happens in:
 
 | Tag | Where | What you use |
 |---|---|---|
-| `[LOCAL]` | Your laptop | Terminal / PowerShell, code editor, web browser |
+| `[LOCAL]` | Your laptop | Terminal / PowerShell, code editor, browser |
 | `[RENDER]` | <https://dashboard.render.com> | Web browser, Render UI |
 | `[BROWSER]` | Your deployed URL | Just a web browser |
 
-**Quick mental model:**
-
 ```
-                                LOCAL                       RENDER
-                          (your laptop)               (cloud, via browser)
-                          ─────────────               ───────────────────
-Install tools                  ✓
-Extract catalog CSVs           ✓   (needs WINEZONE LAN)
-Optional local test            ✓   (Docker Postgres)
-Push to GitHub                 ✓
-Click "Apply Blueprint"                                     ✓
-Wait for seed (15-20 min)                                   ✓
-Get public URL                                              ✓
-Wire up Claude Code/Desktop    ✓
-Open dashboard in browser      ✓
-Troubleshoot via Logs/Shell                                 ✓
+                        LOCAL                          RENDER
+                   (your laptop)                  (cloud, via browser)
+                   ─────────────                  ───────────────────
+Install tools           ✓
+Clone repo              ✓
+Extract catalog CSVs    ✓   (needs WINEZONE LAN)
+Run locally             ✓   (Postgres in Docker + Node + Python)
+git push                ✓
+Click "Apply Blueprint"                                  ✓
+Wait for build + seed                                    ✓
+Get public URL                                           ✓
+Sign in, use the app    (browser)                       (browser)
 ```
 
-You will **never SSH** into the Render server. Anything you need to do
-on Render's side happens through buttons in their web dashboard. The
-"Shell" mentioned in Part 8 is a browser-based terminal inside the Render
-UI, not a real SSH session.
+You will **never SSH** into the Render server. Anything Render-side
+happens in their dashboard. The "Shell" tab on Render is a browser-based
+terminal, not real SSH.
 
 ---
 
 ## Table of contents
 
 - [Part 0 — Tools you need installed](#part-0--tools-you-need-installed--local)
-- [Part 1 — Get the code on your laptop](#part-1--get-the-code-on-your-laptop--local)
+- [Part 1 — Clone the repo](#part-1--clone-the-repo--local)
 - [Part 2 — Extract the catalog from WINEZONE](#part-2--extract-the-catalog-from-winezone--local)
-- [Part 3 — Sanity-check the demo locally (optional but recommended)](#part-3--sanity-check-the-demo-locally-optional-but-recommended--local)
-- [Part 4 — Push to GitHub](#part-4--push-to-github--local)
+- [Part 3 — Run locally (optional but recommended)](#part-3--run-locally-optional-but-recommended--local)
+- [Part 4 — Push your changes](#part-4--push-your-changes--local)
 - [Part 5 — Deploy on Render](#part-5--deploy-on-render--render)
-- [Part 6 — Connect Claude](#part-6--connect-claude--local)
-- [Part 7 — Verify everything works](#part-7--verify-everything-works--browser--local)
-- [Part 8 — Things that commonly go wrong](#part-8--things-that-commonly-go-wrong)
+- [Part 6 — Sign in and verify](#part-6--sign-in-and-verify--browser)
+- [Part 7 — Connect Claude (MCP)](#part-7--connect-claude-mcp--local)
+- [Part 8 — Turning on real email (magic-link via Resend)](#part-8--turning-on-real-email-magic-link-via-resend--render)
+- [Part 9 — Things that commonly go wrong](#part-9--things-that-commonly-go-wrong)
 - [Quick-reference card](#quick-reference-card)
 
 ---
 
 ## Part 0 — Tools you need installed  `[LOCAL]`
 
-> **You are on your laptop.** Everything in this Part is a one-time
-> install on your machine. No Render involvement yet.
-
-Before you start, install these on your laptop. Skip anything you already
-have.
+> **You are on your laptop.** Install everything in this Part once.
 
 ### 0.1 Python 3.12
-
-Check first:
 
 ```powershell
 python --version
 ```
 
-You want `Python 3.12.x` or newer. If not:
+You want `Python 3.12.x` or newer. If not, download from
+<https://www.python.org/downloads/>. **On Windows install, check
+"Add python.exe to PATH."** On Mac: `brew install python@3.12`.
 
-- **Windows:** download from <https://www.python.org/downloads/>. During
-  install, **check the box that says "Add python.exe to PATH"**.
-- **Mac:** `brew install python@3.12`
+### 0.2 Node.js 20+
 
-### 0.2 Git
+```powershell
+node --version
+npm --version
+```
+
+You want Node ≥ 20. If not: download from <https://nodejs.org/>
+(install the LTS version). On Mac: `brew install node@20`.
+
+### 0.3 Git
 
 ```powershell
 git --version
 ```
 
-You want any recent version. If not:
-
+If not installed:
 - **Windows:** <https://git-scm.com/download/win>
 - **Mac:** `brew install git`
 
-### 0.3 ODBC Driver for SQL Server (Windows only)
+### 0.4 ODBC Driver for SQL Server (Windows, only for Part 2)
 
-The catalog extractor in Part 2 needs this. Check whether you already have
-it:
+Only needed if you're going to run the catalog extractor against the
+real WINEZONE SQL Server. Check:
 
 ```powershell
 python -c "import pyodbc; print(pyodbc.drivers())"
 ```
 
-If you see `'SQL Server'` or `'ODBC Driver 17 for SQL Server'` in the
-output, you're good. If the command errors with "no module pyodbc," that's
-fine — we'll install pyodbc later. If the list is empty:
+If the list is empty: install ODBC Driver 18 from
+<https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server>.
 
-1. Download the ODBC Driver 18 installer from Microsoft:
-   <https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server>
-2. Install with default options.
-3. Re-run the check above to confirm.
+### 0.5 (Optional) Docker Desktop
 
-### 0.4 A GitHub account
+For local Postgres in Part 3. <https://www.docker.com/products/docker-desktop/>
 
-If you don't have one: <https://github.com/signup>. Make a note of your
-username.
+### 0.6 Accounts
 
-### 0.5 A Render account
-
-Sign up at <https://render.com/register>. Use the same email as GitHub if
-you can — it makes Part 5 simpler.
-
-### 0.6 (Optional) Docker Desktop
-
-Only needed if you want to test locally in Part 3. Skip if you're going
-straight to Render.
-
-- <https://www.docker.com/products/docker-desktop/>
+- **GitHub** — <https://github.com/signup>
+- **Render** — <https://render.com/register>
 
 ---
 
-## Part 1 — Get the code on your laptop  `[LOCAL]`
-
-> **Still on your laptop.** This Part just gets the code and Python
-> dependencies in place. Nothing here touches WINEZONE or Render.
-
-You should already have the `render_demo/` folder at
-`C:\CELR AI Analysis\render_demo\`. If you don't, ask the person who set up
-this project for access.
-
-### 1.1 Open a terminal in the folder
-
-**Windows PowerShell:**
+## Part 1 — Clone the repo  `[LOCAL]`
 
 ```powershell
-cd "C:\CELR AI Analysis\render_demo"
+cd "C:\where\you\keep\projects"
+git clone https://github.com/hellou2xai/celr_1st.git
+cd celr_1st
 ```
 
-**Mac/Linux:**
-
-```bash
-cd "/path/to/CELR AI Analysis/render_demo"
-```
-
-### 1.2 Confirm the structure
+Confirm the structure:
 
 ```powershell
 ls
 ```
 
-You should see at least these entries:
+You should see:
 
 ```
-app  data  db  extract  scripts  seed
-.env.example  .gitignore  Dockerfile  README.md  render.yaml  requirements.txt
+backend/   frontend/   data/   db/   extract/   seed/   scripts/
+README.md  DEPLOY.md   CURRENT_APP_AUDIT.md
+render.yaml  requirements.txt  .env.example  .gitignore
+LICENSE  Dockerfile
 ```
 
-If anything's missing, stop and re-check the folder path. The deploy will
-not work without the full tree.
-
-### 1.3 Install Python dependencies
+Install Python and Node dependencies:
 
 ```powershell
 pip install -r requirements.txt
+cd frontend
+npm install
+cd ..
 ```
 
-Expected output: a lot of "Successfully installed ..." lines, ending with
-something like `Successfully installed fastapi-... asyncpg-... ...`. The
-process takes 1–3 minutes.
-
-If you see `pip: command not found`, use `python -m pip` instead:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-### 1.4 Install pyodbc separately (Windows only, for Part 2)
-
-```powershell
-pip install pyodbc
-```
+Each takes 1–3 minutes. You can run both in parallel terminals.
 
 ---
 
 ## Part 2 — Extract the catalog from WINEZONE  `[LOCAL]`
 
-> **On your laptop, on the WINEZONE network.** This is the only step
-> that talks to the real SQL Server. The extractor runs locally; nothing
-> gets sent to Render. If you're remote, VPN in first — see warning
-> below.
+> **You must be on the WINEZONE LAN** (or VPN'd in) — the extractor
+> talks to the SQL Server at 192.168.1.99.
 
-The deploy package needs three things from the real database before it can
-be seeded:
-
-1. The item catalog (codes, descriptions, costs, prices).
-2. Department / category / supplier reference lists.
-3. Aggregated velocity numbers (averages per item — no row-level data).
-
-The extractor script produces CSV files. **It does not export any customer
-or transaction data.**
-
-> **Important:** Your laptop must be on the same network as the WINEZONE
-> SQL Server (192.168.1.99) for this step. If you're remote, VPN in first.
-> If `ping 192.168.1.99` doesn't get a response, the extractor will fail
-> with a connection timeout.
-
-### 2.1 Run the extractor
+The Render demo needs eight CSVs of catalog data. They are not in the
+repo by default. Generate them:
 
 ```powershell
-cd "C:\CELR AI Analysis\render_demo\extract"
+cd extract
+
+$env:SQL_SERVER   = "192.168.1.99"
+$env:SQL_DATABASE = "WINEZONE"
+$env:SQL_AUTH     = "sql"
+$env:SQL_USER     = "CELR"
+$env:SQL_PASSWORD = "Pow1966"
+$env:SQL_DRIVER   = "SQL Server"
+
 python extract_real_catalog.py
 ```
 
@@ -243,500 +190,448 @@ Connecting to 192.168.1.99/WINEZONE as CELR
   dow_seasonality.csv: 7
   hour_distribution.csv: 24
   baseline.csv: avg_txns_per_day=412
-
-Done. Output in C:\CELR AI Analysis\render_demo\data
-Commit data/*.csv to the repo, then 'git push' to deploy on Render.
 ```
 
-(Numbers will vary — those are illustrative.)
+(Numbers are illustrative.) The script runs in 30–60 seconds. It only
+pulls **catalog and aggregate velocity** — no transaction or customer
+PII leaves the WINEZONE database.
 
-**The script takes 30–60 seconds.** If it sits for more than two minutes
-without output, hit Ctrl-C and see the [troubleshooting section](#part-8--things-that-commonly-go-wrong).
-
-### 2.2 Sanity-check the CSVs
+Quick check that the items CSV looks real:
 
 ```powershell
-cd "C:\CELR AI Analysis\render_demo\data"
+cd ..\data
 ls
 ```
 
-You should see all eight CSVs plus a `README.md`. Open `items.csv` in
-Excel or Notepad and confirm:
-
-- Header row exists: `id, item_lookup_code, description, ...`
-- You see real WINEZONE items (e.g., MALIBU RUM, CORONA, etc.)
-- Cost and price columns have sensible numbers.
-
-If any CSV is empty (0 bytes) or has only a header, the SQL extraction
-silently returned no rows — stop and check that the database is reachable
-and that you used a SQL login with SELECT permissions.
+You should see eight CSVs plus `README.md`. Open `items.csv` and confirm
+familiar SKUs (MALIBU, CORONA, etc.) and sensible costs/prices.
 
 ---
 
-## Part 3 — Sanity-check the demo locally (optional but recommended)  `[LOCAL]`
+## Part 3 — Run locally (optional but recommended)  `[LOCAL]`
 
-> **All local.** Spin up Postgres in Docker on your laptop, seed it with
-> a small slice, and confirm the app boots. Nothing here touches Render.
-> The whole Part takes ~3 minutes and saves you a 20-minute Render round
-> trip if there's a bug.
-
-Skip to [Part 4](#part-4--push-to-github--local) if you're confident and
-short on time. Doing this part catches problems before they cost you a
-slow Render deploy.
+> Skip to Part 4 if you're confident. Doing this catches bugs in 3
+> minutes instead of after a 25-minute Render deploy.
 
 ### 3.1 Start a local Postgres in Docker
 
 ```powershell
-docker run -d --name wz-pg -p 5432:5432 `
+docker run -d --name celr-pg -p 5432:5432 `
   -e POSTGRES_PASSWORD=postgres `
-  -e POSTGRES_DB=winezone_demo `
+  -e POSTGRES_DB=celr_procurement `
   postgres:16
 ```
 
-(On Mac/Linux replace the trailing backticks with backslashes for line
-continuation.)
-
-Confirm it's running:
+Confirm:
 
 ```powershell
 docker ps
 ```
 
-You should see `postgres:16` with status `Up x seconds`.
-
-### 3.2 Configure local env
+### 3.2 Configure env
 
 ```powershell
-cd "C:\CELR AI Analysis\render_demo"
 copy .env.example .env
 ```
 
-Open `.env` in a text editor and make sure these two lines are set:
+Open `.env` and confirm:
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/winezone_demo
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/celr_procurement
 SYNTH_DAY_TXN_CAP=50
+AUTH_EMAIL_PROVIDER=none
+AUTH_ALLOWED_EMAILS=hello@u2xai.com
 ```
 
-Setting the cap to 50 keeps the local seed fast (≈1 minute instead of 15).
+(`SYNTH_DAY_TXN_CAP=50` keeps the local seed under 90 seconds. Production
+runs with no cap.)
 
-### 3.3 Load env vars into your shell
-
-**PowerShell:**
+Load env into your shell:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/winezone_demo"
+$env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/celr_procurement"
 $env:SYNTH_DAY_TXN_CAP = "50"
+$env:AUTH_EMAIL_PROVIDER = "none"
+$env:AUTH_ALLOWED_EMAILS = "hello@u2xai.com"
 ```
 
-**Mac/Linux:**
-
-```bash
-export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/winezone_demo"
-export SYNTH_DAY_TXN_CAP=50
-```
-
-### 3.4 Run the seed
+### 3.3 Seed the database
 
 ```powershell
 python -m seed.seed
 ```
 
-Expected output (truncated):
+Expected tail:
 
 ```
 [14:23:01] render_demo seed v1.0.0 (seed=20260518, years=4)
-[14:23:01] Applying schema
-[14:23:02] Phase 1: catalog & reference data
 [14:23:02]   department: 24 rows
-[14:23:02]   category: 412 rows
-...
-[14:23:45]   through 2024-04-21: 18,250 txns, 54,127 entries (44s, 414 txns/s)
+[14:23:02]   item: 29,841 rows
 ...
 [14:24:30] Seed complete in 88s
 ```
 
-If the seed finishes without an error, you're good.
-
-### 3.5 Start the app
+### 3.4 Start the backend (FastAPI)
 
 ```powershell
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn backend.main:app --reload --port 8000
 ```
 
-Expected output:
+Expected:
 
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000
-INFO:     Application startup complete.
 ```
 
-Open <http://localhost:8000/> in your browser. You should see the landing
-page. Then click "Open the dashboard →" — charts should populate within a
-few seconds.
+Leave this terminal running.
 
-Press Ctrl-C in the terminal to stop the server.
-
-### 3.6 Stop the local Postgres (optional)
+### 3.5 Start the frontend (Vite) in a second terminal
 
 ```powershell
-docker stop wz-pg && docker rm wz-pg
+cd celr_1st\frontend
+npm run dev
+```
+
+Expected:
+
+```
+  VITE v5.x.x  ready in 412 ms
+  ➜  Local:   http://localhost:5173/
+```
+
+Open http://localhost:5173/.
+
+### 3.6 Sign in
+
+You'll be redirected to `/login`. Enter `hello@u2xai.com`. Because
+`AUTH_EMAIL_PROVIDER=none` in dev, the magic-link token comes back in
+the response — it'll auto-fill the second step. Click **Sign in**.
+
+You should land on the Dashboard with five KPI tiles populated.
+
+**Try the drill-down**: navigate to **Items**, right-click any UPC →
+modal opens with the item summary, open POs, and transaction history.
+
+### 3.7 Stop everything
+
+Ctrl-C in both terminals. Stop the local Postgres:
+
+```powershell
+docker stop celr-pg && docker rm celr-pg
 ```
 
 ---
 
-## Part 4 — Push to GitHub  `[LOCAL]`
+## Part 4 — Push your changes  `[LOCAL]`
 
-> **Last local step before Render.** You will use your browser briefly
-> to create a GitHub repo, then git from your terminal to push. After
-> this Part you can close the terminal and move entirely to the browser.
-
-Render deploys by pulling from a GitHub (or GitLab/Bitbucket) repository.
-
-### 4.1 Create a new private repository on GitHub
-
-1. Go to <https://github.com/new>.
-2. **Repository name:** `winezone-demo` (or whatever you like).
-3. **Visibility:** Private. (Catalog CSVs are public-safe but the
-   repository's not interesting to anyone else.)
-4. Leave "Add a README" / "Add .gitignore" UNCHECKED. We have those
-   already.
-5. Click **Create repository**.
-
-GitHub now shows a "Quick setup" page with a URL like
-`https://github.com/your-username/winezone-demo.git`. Copy it.
-
-### 4.2 Initialize git locally and commit
+Render auto-deploys from `main`. If you extracted new catalog CSVs or
+made code changes, push them:
 
 ```powershell
-cd "C:\CELR AI Analysis\render_demo"
-git init
 git add .
-git commit -m "winezone-demo initial commit"
+git status              # eyeball what's staged
+git commit -m "refresh catalog snapshot"
+git push origin main
 ```
 
-Expected output:
-
-```
-[main (root-commit) abc1234] winezone-demo initial commit
- 22 files changed, 4218 insertions(+)
-```
-
-The exact file count may differ. What matters is that the commit succeeds.
-
-### 4.3 Push to GitHub
-
-```powershell
-git branch -M main
-git remote add origin https://github.com/your-username/winezone-demo.git
-git push -u origin main
-```
-
-(Replace the URL with the one GitHub gave you.)
-
-If git asks for credentials, use your GitHub username and a **personal
-access token** (not your password). Generate one at
-<https://github.com/settings/tokens> with `repo` scope.
-
-After the push, refresh your GitHub repo page — you should see all the
-files.
+If `git push` asks for credentials, use your GitHub username and a
+**personal access token** — not your account password. Generate one at
+<https://github.com/settings/tokens?type=beta> with `repo` write access
+to `celr_1st`.
 
 ---
 
 ## Part 5 — Deploy on Render  `[RENDER]`
 
-> **Switch to your browser, at <https://dashboard.render.com>.** No
-> terminal needed for this whole Part. You'll click through Render's UI
-> and watch logs in the browser while the seed runs.
+> **Switch to your browser**, at <https://dashboard.render.com>. No
+> terminal needed for this whole Part.
 
-This is the magic step. Render's Blueprint feature reads `render.yaml`
-from your repo and creates everything for you.
+### 5.1 Connect Render to your GitHub (once)
 
-### 5.1 Connect Render to your GitHub
-
-1. Go to <https://dashboard.render.com>.
-2. Top right, click your avatar → **Account settings** → **GitHub** →
-   **Connect**.
-3. Authorize Render and grant access to the `winezone-demo` repo (or all
-   repos, your choice).
+1. Avatar (top right) → **Account settings** → **GitHub** → **Connect**.
+2. Authorize Render and grant access to `celr_1st` (or all repos).
 
 ### 5.2 Create the Blueprint
 
-1. From the dashboard, click **New +** (top right) → **Blueprint**.
-2. Select the `winezone-demo` repository.
-3. Render scans the repo and finds `render_demo/render.yaml`. It will
-   show a preview:
-   - **Web Service:** `winezone-demo` (Starter, Python, Oregon)
-   - **PostgreSQL:** `winezone-demo-db` (Starter, version 16, Oregon)
-4. Give the blueprint a name like `winezone-demo`.
-5. Click **Apply**.
+1. **New + → Blueprint**.
+2. Pick `hellou2xai/celr_1st`.
+3. Render reads `render.yaml` and shows the plan:
+   - Web service: `celr-procurement` (Python Starter, Oregon)
+   - Database: `celr-procurement-db` (Postgres 16 Starter, Oregon)
+4. Click **Apply**.
 
-### 5.3 Watch the deploy
+### 5.3 Watch the first build
 
-Render now does, in order:
+Click into the `celr-procurement` web service → **Logs** tab. The first
+deploy runs four phases:
 
-1. **Provisions Postgres** (1–2 minutes). Status: "Available".
-2. **Builds the web service** — clones your repo, runs
-   `pip install -r requirements.txt`. ~3–5 minutes.
-3. **Runs `preDeployCommand`** which is `python -m seed.seed`. **This is
-   the slow part — 10 to 20 minutes.** Click the **Logs** tab on the web
-   service to watch real-time output.
+1. **Provision Postgres** (1–2 min). Status reaches "Available."
+2. **Build** — Node 20 download → `npm ci` → Vite build → `pip install`. (~5 min)
+3. **preDeployCommand** — `python -m seed.seed`. **This is the slow part — 10 to 20 minutes** for 4 years of synthetic transactions. You'll see lines like:
 
-You should see log lines like:
+   ```
+   [14:35:12] Phase 2: transactions
+   [14:35:12]   span: 2022-05-18 → 2026-05-18 (1461 days)
+   [14:48:55]   through 2026-05-18: 612,450 txns, 1,857,201 entries
+   [14:48:55] Seed complete in 822s
+   ```
 
-```
-[14:23:01] render_demo seed v1.0.0 (seed=20260518, years=4)
-[14:23:01] Applying schema
-[14:23:02] Phase 1: catalog & reference data
-[14:23:02]   department: 24 rows
-...
-[14:35:12]   through 2026-05-18: 612,450 txns, 1,857,201 entries (722s, 848 txns/s)
-[14:35:12]   done. 612,450 txns and 1,857,201 entries in 722s
-[14:35:18] Phase 3: backfill aggregates
-[14:35:22] Phase 3b: purchase orders
-[14:35:39] Phase 3c: supporting events
-[14:35:50] Phase 4: analyze tables
-[14:35:55] Seed complete in 774s
-```
+4. **Start** — `uvicorn backend.main:app …`. Health check `/api/health`
+   should return `ok` within 30s.
 
-4. **Starts the web service** with `uvicorn ...`. Should be live within
-   30 seconds of seed completion.
-5. **Health check** — Render hits `/healthz`, which queries the DB. When
-   it returns `ok`, the deploy goes green.
+When the deploy status goes green, your URL is live.
 
 ### 5.4 Find your public URL
 
-In the web service page, look at the top: **`https://winezone-demo-XXXX.onrender.com`**
-(the suffix is random; you can customize it under **Settings → Name**).
-
-Click the URL. You should see the landing page.
-
-> **First load may take 30 seconds** while uvicorn warms up. After that
-> it's fast.
+Top of the web service page, e.g. `https://celr-procurement-abc1.onrender.com`.
+You can rename the service in **Settings → Name** to get a cleaner URL.
 
 ---
 
-## Part 6 — Connect Claude  `[LOCAL]`
+## Part 6 — Sign in and verify  `[BROWSER]`
 
-> **Back on your laptop.** You'll configure your local Claude Code CLI
-> or Claude Desktop app to talk to the Render-hosted MCP endpoint. The
-> Render service itself is fully deployed and idle, just waiting for
-> traffic.
+1. Open `https://<your-service>.onrender.com/`.
+2. You'll bounce to `/login`.
+3. Enter `hello@u2xai.com` and click **Send magic link**.
+4. Since `AUTH_EMAIL_PROVIDER=none` is the default, the **dev token**
+   comes back in the response and auto-fills the form. Click **Sign in**.
 
-The MCP endpoint is at `https://<your-service>.onrender.com/mcp/` — note
-the trailing slash, it's required.
-
-### 6.1 Claude Code (CLI)
-
-From your terminal:
-
-```bash
-claude mcp add winezone-demo --transport http https://your-service.onrender.com/mcp/
-```
-
-Then restart Claude Code. In a new session, type `/mcp` — you should see
-`winezone-demo` listed with ~45 tools.
-
-### 6.2 Claude Desktop
-
-1. Open Claude Desktop → **Settings → Developer → Edit Config**.
-2. Add (or merge) into the `mcpServers` object:
-
-   ```json
-   {
-     "mcpServers": {
-       "winezone-demo": {
-         "url": "https://your-service.onrender.com/mcp/"
-       }
-     }
-   }
-   ```
-
-3. Save and **restart Claude Desktop**.
-4. New chat → click the 🔧 icon in the message box — you should see the
-   `winezone-demo` tools listed.
-
-### 6.3 Try it
-
-In Claude, ask something like:
-
-> "Using winezone-demo, show me the top 5 fast movers in the last 30 days."
-
-Claude should call the `fast_movers` tool and return a table.
-
----
-
-## Part 7 — Verify everything works  `[BROWSER + LOCAL]`
-
-> **Mostly a web browser exercise.** The first six checks are URLs you
-> open in a browser. The last one (Claude) uses your local Claude Code
-> or Claude Desktop that you wired up in Part 6.
-
-Run through this checklist before declaring victory:
+You're on the Dashboard. Verification checklist:
 
 | Check | Expected |
 |---|---|
-| `https://<url>/` loads | Landing page with title "WINEZONE demo" |
-| `https://<url>/dashboard` loads | Dashboard with populated KPI tiles (not all zero) |
-| Sales trend chart appears | A wavy line spanning ~365 days |
-| Hourly heatmap appears | A 7×24 grid with red intensity in evening hours |
-| Fast movers table populated | 10 rows of real-looking SKUs |
-| `https://<url>/healthz` | Returns `ok` |
-| `https://<url>/api/executive` | Returns JSON with non-zero KPIs |
-| Claude tool call works | Asking Claude returns data, not an error |
+| Dashboard loads | 5 KPI tiles with real numbers, not zero |
+| Sidebar collapses | Click the chevron at bottom-left |
+| **Right-click any UPC** | Drill-down modal opens with item details |
+| **Open POs** page | Filters work, supplier rollup populated, CSV export downloads |
+| **Stockouts** page | KPI tiles + by-risk + by-supplier rollups, xlsx export downloads |
+| **Sales Analytics** | 4 tabs render: Top sellers, Weekly YoY, Movers, Transactions |
+| **PO Spend** | 4 tabs render with charts |
+| **Item Analytics** | Click any top item → 4 charts appear |
+| **AI Advisor** | Daily briefing card + Q&A returns rule-based answers |
+| `/api/health` | Returns `ok` in browser |
+| `/mcp/` | Returns the MCP server greeting (or "trailing slash" error if no `/`) |
 
-If any item fails, jump to the next section.
+If anything's blank or errors, go to [Part 9](#part-9--things-that-commonly-go-wrong).
 
 ---
 
-## Part 8 — Things that commonly go wrong
+## Part 7 — Connect Claude (MCP)  `[LOCAL]`
 
-Each fix is tagged with where you have to be to apply it.
+MCP URL: `https://<your-service>.onrender.com/mcp/` (trailing slash matters).
+
+### Claude Code (CLI)
+
+```bash
+claude mcp add celr-procurement --transport http https://<your-service>.onrender.com/mcp/
+```
+
+Restart Claude Code. In a new session, `/mcp` shows `celr-procurement`
+with ~45 tools.
+
+### Claude Desktop
+
+`Settings → Developer → Edit Config` and add:
+
+```json
+{
+  "mcpServers": {
+    "celr-procurement": {
+      "url": "https://<your-service>.onrender.com/mcp/"
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The wrench icon in a new chat lists the tools.
+
+### Try it
+
+> "Using celr-procurement, show me top 5 items to reorder this week."
+
+Claude calls `reorder_recommendations` and renders the result.
+
+---
+
+## Part 8 — Turning on real email (magic-link via Resend)  `[RENDER]`
+
+Default install uses `AUTH_EMAIL_PROVIDER=none` — magic-link tokens come
+back in the API response (dev mode). To send actual emails:
+
+1. Create a Resend account at <https://resend.com>.
+2. Verify a sending domain (or use their `onboarding@resend.dev` for testing).
+3. Generate an API key: <https://resend.com/api-keys>.
+4. In Render → `celr-procurement` → **Environment** → add / update:
+
+   ```
+   AUTH_EMAIL_PROVIDER=resend
+   RESEND_API_KEY=re_********
+   RESEND_FROM=CELR <noreply@yourdomain.com>
+   PUBLIC_URL=https://<your-service>.onrender.com
+   ```
+
+5. Click **Save changes**. Render re-deploys automatically (~2 min, no
+   re-seed because `seed_marker` is already set).
+
+After redeploy, `/login` actually sends an email containing the token
+and a one-click sign-in link.
+
+Locking down the allowlist to your team:
+
+```
+AUTH_ALLOWED_EMAILS=hello@u2xai.com,bob@u2xai.com
+# OR
+AUTH_ALLOWED_DOMAINS=u2xai.com
+```
+
+---
+
+## Part 9 — Things that commonly go wrong
+
+Each fix is tagged with where to apply it.
 
 ### "The extractor hangs forever"  `[LOCAL]`
 
-You're not on the same network as the SQL Server. VPN in or run the
-extractor from a machine inside the network.
+You're not on the same network as the WINEZONE SQL Server. VPN in or run
+the extractor on a machine inside the network.
 
 ### "pyodbc.OperationalError: ('08001', ...)"  `[LOCAL]`
 
-ODBC driver mismatch. Try:
+ODBC driver name doesn't match.
 
 ```powershell
 python -c "import pyodbc; print(pyodbc.drivers())"
 ```
 
-If you see `ODBC Driver 18 for SQL Server` instead of plain `SQL Server`,
-set the right driver before running:
+Set `$env:SQL_DRIVER` to whatever exact string the list shows. If you
+see only `ODBC Driver 18 for SQL Server`, also add:
 
 ```powershell
 $env:SQL_DRIVER = "ODBC Driver 18 for SQL Server"
-$env:SQL_EXTRA = "TrustServerCertificate=yes;"   # ODBC 18 default-rejects self-signed
-python extract_real_catalog.py
 ```
 
-If that still fails, install ODBC 17 (older, friendlier defaults) from
-the Microsoft download page.
+### "npm install fails with permission errors"  `[LOCAL]`
 
-### "git push fails with 403 or asks for password"  `[LOCAL]`
+On Windows, run PowerShell as administrator once for the install. On
+Mac/Linux make sure `~/.npm` is owned by you, not root.
 
-Use a personal access token, not your account password. Make one at
-<https://github.com/settings/tokens?type=beta> with `repo` write
-permission and use it in place of the password.
+### "Render build fails: 'node: command not found'"  `[RENDER]`
 
-### "Render build fails with `Could not find a version that satisfies ...`"  `[RENDER]`
-
-The Python version on Render doesn't match what one of the packages
-expects. Open `render.yaml` and confirm `PYTHON_VERSION` is `3.12.7`. If
-Render still picks the wrong version, set the env var manually under
-**Environment** in the Render dashboard.
+The build command downloads Node from nodejs.org. If that fails, edit
+`render.yaml` to use a different URL or pin Node via Render's
+buildpacks. For a fix-in-place: in Render → **Settings → Build &
+Deploy → Build Command**, hardcode a working Node CDN URL.
 
 ### "preDeployCommand timed out"  `[RENDER]`
 
-The default Render timeout is generous (90 minutes) but if you hit it:
+Default Render timeout is generous (90 min) but if you hit it:
 
-1. In Render → web service → **Environment**, set
-   `SYNTH_DAY_TXN_CAP = 300`. Save.
-2. Trigger a manual deploy (button top right). The lower cap finishes in
-   under 5 minutes.
+1. **Environment** → set `SYNTH_DAY_TXN_CAP=300`.
+2. Trigger manual deploy. Lower cap finishes in 3–5 min.
+3. To unlock full data later, remove `SYNTH_DAY_TXN_CAP`, then
+   open Render Shell:
 
-You can crank it back up by removing the env var and forcing a re-seed
-later via Render's **Shell** tab:
+   ```bash
+   FORCE_RESEED=true python -m seed.seed
+   ```
 
-```bash
-FORCE_RESEED=true python -m seed.seed
-```
+### "Login screen loops back to itself"  `[BROWSER]` / `[RENDER]`
 
-### "The dashboard loads but every chart is empty"  `[RENDER]`
+Cookies aren't being set. Causes:
 
-The seed didn't actually populate the DB. Open Render's Shell tab and
-check:
+- **Local dev**: Vite is on `localhost:5173` and FastAPI is on
+  `localhost:8000`. The proxy in `vite.config.ts` handles this. If you
+  bypassed it and hit `:8000` directly from `:5173`, cookies won't
+  cross. Use the Vite URL.
+- **Production**: confirm `RENDER=true` is set in env vars
+  (it's in `render.yaml` by default). This switches the session cookie
+  to `Secure`.
+
+### "Dashboard tiles are all zero"  `[RENDER]`
+
+Seed didn't run. Open Render Shell tab:
 
 ```bash
 psql $DATABASE_URL -c "SELECT COUNT(*) FROM transaction_entry;"
 ```
 
-If it's zero, force a re-seed:
+If zero:
 
 ```bash
 FORCE_RESEED=true python -m seed.seed
 ```
 
-### "Health check fails / service won't go live"  `[RENDER]`
+### "Sales Analytics tab is blank"  `[BROWSER]`
 
-Click **Logs**. Look for the last red line. Common causes:
+The seed needs >3 years of history for the YoY comparison to populate.
+Confirm `SYNTH_YEARS` is at least `4` in Render env vars.
 
-- "DATABASE_URL is not set" — the env var wasn't wired up. Open the web
-  service → **Environment** → confirm `DATABASE_URL` is set
-  `fromDatabase`. If not, set it manually pointing at your Postgres
-  service's internal connection string.
-- "Connection refused" — the Postgres service hasn't started yet. Wait
-  60 seconds and Render will auto-retry the health check.
+### "MCP client can't connect"  `[LOCAL]`
 
-### "Claude says: 'Error: cannot connect to MCP server'"  `[LOCAL]`
-
-Three things to check, in order:
-
-1. URL has the trailing slash: `/mcp/` not `/mcp`.
-2. The service is awake. Hit `https://<url>/healthz` in a browser first
-   to wake the worker.
-3. Your Claude client supports Streamable HTTP transport. This requires
-   Claude Code ≥ 1.0 or Claude Desktop on a recent version.
+1. URL has trailing slash: `/mcp/` not `/mcp`.
+2. Hit `https://<url>/api/health` in browser first — wakes the worker.
+3. Your client needs Streamable HTTP transport (Claude Code ≥ 1.0,
+   recent Claude Desktop).
 
 ### "I want to start completely over"  `[RENDER]`
 
-In Render dashboard:
-
-1. Delete the web service.
-2. Delete the Postgres database.
-3. Re-run **New + → Blueprint** with the same repo.
-
-Or just delete the Blueprint (which deletes both at once).
+Delete the Blueprint in Render dashboard. Both the web service and
+the Postgres go with it. Then **New + → Blueprint** with the same repo.
 
 ### "I want to redeploy after fixing something"  `[LOCAL → RENDER]`
 
-Just `git push` from your laptop — Render auto-deploys from main on its
-own. The seed step will detect existing data via `seed_marker` and skip
-itself, so redeploys are fast (under 2 minutes). Watch the new deploy
-finish in the Render Logs tab.
+`git push` from your laptop. Render auto-deploys. `seed_marker` makes
+the seed phase skip (~2 min total redeploy).
 
 ---
 
 ## Quick-reference card
 
 ```
-[LOCAL]   EXTRACT     cd render_demo/extract && python extract_real_catalog.py
+[LOCAL]   CLONE       git clone https://github.com/hellou2xai/celr_1st.git
+[LOCAL]   PYDEPS      pip install -r requirements.txt
+[LOCAL]   FEDEPS      cd frontend && npm install
+[LOCAL]   EXTRACT     cd extract && python extract_real_catalog.py
+[LOCAL]   LOCAL PG    docker run -d --name celr-pg -p 5432:5432 \
+                        -e POSTGRES_PASSWORD=postgres \
+                        -e POSTGRES_DB=celr_procurement postgres:16
+[LOCAL]   SEED        python -m seed.seed
+[LOCAL]   BACKEND     uvicorn backend.main:app --reload
+[LOCAL]   FRONTEND    cd frontend && npm run dev   (in another terminal)
 [LOCAL]   COMMIT      git add . && git commit -m "..." && git push
-[RENDER]  DEPLOY      Render dashboard → New + → Blueprint → repo → Apply
-[BROWSER] WAKE UP     curl https://<url>/healthz   (or just open the URL)
-[RENDER]  RESEED      Render Shell tab → FORCE_RESEED=true python -m seed.seed
-[RENDER]  LOGS        Render web service → Logs tab
-[RENDER]  SQL         Render Shell tab → psql $DATABASE_URL
-[LOCAL]   LOCAL DEV   docker run postgres + python -m seed.seed + uvicorn app.main:app
-[LOCAL]   CLAUDE      claude mcp add winezone-demo --transport http <url>/mcp/
+[RENDER]  DEPLOY      New + → Blueprint → celr_1st → Apply
+[RENDER]  RESEED      Shell tab → FORCE_RESEED=true python -m seed.seed
+[RENDER]  LOGS        Web service → Logs tab
+[RENDER]  SQL         Shell tab → psql $DATABASE_URL
+[BROWSER] WAKE        https://<url>/api/health
+[LOCAL]   CLAUDE      claude mcp add celr-procurement --transport http <url>/mcp/
 ```
 
-**The URLs once deployed:**
+**Live URLs once deployed:**
 
 ```
-LANDING     https://<service>.onrender.com/
-DASHBOARD   https://<service>.onrender.com/dashboard
-MCP         https://<service>.onrender.com/mcp/
-HEALTH      https://<service>.onrender.com/healthz
-JSON API    https://<service>.onrender.com/api/executive  (and others)
+LOGIN        https://<service>.onrender.com/login
+DASHBOARD    https://<service>.onrender.com/
+MCP          https://<service>.onrender.com/mcp/
+HEALTH       https://<service>.onrender.com/api/health
 ```
 
-**The environment variables that matter:**
+**Env vars that matter:**
 
 | Name | Purpose | Default |
 |---|---|---|
-| `DATABASE_URL` | Postgres DSN. Wired automatically by render.yaml. | (Render auto) |
-| `SYNTH_YEARS` | Years of history to generate. | 4 |
+| `DATABASE_URL` | Postgres DSN. Wired by render.yaml. | (auto) |
+| `SYNTH_YEARS` | Years of synthetic history. | 4 |
 | `SYNTH_SEED` | RNG seed for reproducibility. | 20260518 |
-| `SYNTH_DAY_TXN_CAP` | Cap per-day txn count (0 = real volume). | 0 |
-| `FORCE_RESEED` | Set to `true` to wipe and re-seed. | unset |
-| `PUBLIC_URL` | Override what the landing page shows for the MCP URL. | (auto-detected) |
+| `SYNTH_DAY_TXN_CAP` | Cap per-day txn count (0=real volume). | 0 |
+| `FORCE_RESEED` | Set `true` to wipe + re-seed. | unset |
+| `AUTH_ALLOWED_EMAILS` | Comma-separated allowlist. | hello@u2xai.com |
+| `AUTH_ALLOWED_DOMAINS` | Comma-separated domain allowlist. | (empty) |
+| `AUTH_EMAIL_PROVIDER` | `none` (dev) or `resend`. | none |
+| `AUTH_SECRET` | HMAC secret. Auto-generated per env. | random |
+| `RESEND_API_KEY` | When `AUTH_EMAIL_PROVIDER=resend`. | unset |
+| `PUBLIC_URL` | Used in magic-link emails. | unset |
 
-That's it. If you got stuck somewhere not covered above, capture the
-error message and the Render log, and ask whoever set this up. Welcome
-to the team.
+That's the entire installation manual. If you hit something not covered
+here, grab the Render log lines or the browser console error and ask the
+maintainer. Welcome to CELR.
