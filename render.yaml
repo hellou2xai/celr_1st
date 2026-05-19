@@ -41,8 +41,8 @@ services:
         value: 4
       - key: SYNTH_SEED
         value: 20260518
-      # Set to 100 if using basic_256mb DB plan to fit data into 256MB.
-      # Set to 0 (no cap) once you've upgraded to basic_1gb or larger.
+      # Set to 100 if using basic-256mb DB plan to fit data into 256MB.
+      # Set to 0 (no cap) once you've upgraded to basic-1gb or larger.
       - key: SYNTH_DAY_TXN_CAP
         value: 100
       - key: RENDER
@@ -65,17 +65,18 @@ services:
       #   value: https://celr-procurement.onrender.com
 
 databases:
-  # Render renamed Postgres plans in late 2024 — "starter" is gone.
-  # Options:
-  #   free          — 1GB, expires after 90 days. Fine for trying it out.
-  #   basic_256mb   — ~$7/mo, 256MB disk. Tight for 4yr of data; pair with
+  # Render's current Postgres plan names use hyphens (not underscores).
+  # Valid options (2025):
+  #   free          — 1GB, $0, expires after 90 days. Fine for trying it out.
+  #   basic-256mb   — ~$7/mo, 256MB disk. Tight for 4yr of data; pair with
   #                   SYNTH_DAY_TXN_CAP=100 to fit.
-  #   basic_1gb     — ~$19/mo, 1GB disk. Fits full 4yr seed at real volume.
-  #   pro_4gb       — ~$95/mo, 4GB.
-  # If basic_256mb fills up during seed, bump to basic_1gb in the Render
+  #   basic-1gb     — ~$19/mo, 1GB disk. Fits full 4yr seed at real volume.
+  #   basic-4gb     — ~$45/mo, 4GB.
+  #   pro-4gb       — ~$95/mo, 4GB with higher CPU/RAM.
+  # If basic-256mb fills up during seed, bump to basic-1gb in the Render
   # dashboard (Database → Settings → Plan) — no code change needed.
   - name: celr-procurement-db
-    plan: basic_256mb
+    plan: basic-256mb
     databaseName: celr_procurement
     user: celr
     region: oregon
