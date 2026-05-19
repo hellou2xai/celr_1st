@@ -1,34 +1,31 @@
 """
-FastAPI entrypoint for the WINEZONE demo.
+FastAPI entrypoint for CELR Procurement.
 
-Routes:
-    GET  /             — marketing/landing page
-    GET  /dashboard    — analytics dashboard (HTML)
-    GET  /api/*        — JSON endpoints feeding the dashboard
-    /mcp/*             — Streamable HTTP MCP server (~45 tools)
-    GET  /healthz      — Render health check
-
-The MCP server is mounted as a sub-ASGI app at /mcp. Visitors point their
-Claude Code / Desktop / SDK client at https://<service>.onrender.com/mcp/
-and get the same tool surface as the original WINEZONE procurement MCP.
+Layout:
+    /api/*       JSON endpoints feeding the React SPA pages
+    /api/health  Liveness probe used by Render
+    /mcp/*       Streamable HTTP MCP server (45 analytics tools)
+    /auth/*      Magic-link sign-in
+    /*           Serves frontend/dist (SPA fallback)
 """
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from . import analytics
-from .db import get_pool, close_pool
+from .api.pages import router as pages_router
+from .api.pages2 import router as pages2_router
+from .auth import router as auth_router
+from .db import close_pool, get_pool
 from .mcp_server import mcp_app
 
-HERE = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(HERE / "templates"))
+ROOT = Path(__file__).resolve().parent
+FRONTEND_DIST = (ROOT / ".." / "frontend" / "dist").resolve()
 
 
 @asynccontextmanager
@@ -39,35 +36,19 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="WINEZONE Procurement Demo",
-    description="Live Postgres-backed retail intelligence MCP + dashboard",
+    title="CELR Procurement",
+    description="React SPA + JSON API + Streamable HTTP MCP server",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
+app.include_router(auth_router)
+app.include_router(pages_router)
+app.include_router(pages2_router)
 app.mount("/mcp", mcp_app)
 
 
-# --------------------------------------------------------------------------- #
-# Pages
-# --------------------------------------------------------------------------- #
-
-@app.get("/", response_class=HTMLResponse)
-async def landing(request: Request) -> HTMLResponse:
-    base_url = os.environ.get("PUBLIC_URL") or str(request.base_url).rstrip("/")
-    return templates.TemplateResponse(
-        "landing.html",
-        {"request": request, "mcp_url": f"{base_url}/mcp/"},
-    )
-
-
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("dashboard.html", {"request": request})
-
-
-@app.get("/healthz", response_class=PlainTextResponse)
+@app.get("/api/health", response_class=PlainTextResponse)
 async def healthz() -> str:
     try:
         await analytics.ping()
@@ -76,85 +57,30 @@ async def healthz() -> str:
         raise HTTPException(503, f"db unreachable: {e}")
 
 
-# --------------------------------------------------------------------------- #
-# REST API powering the dashboard
-# --------------------------------------------------------------------------- #
-
-@app.get("/api/executive")
-async def api_executive():
-    return await analytics.executive_dashboard()
-
-
-@app.get("/api/sales-trend")
-async def api_sales_trend(days: int = Query(180, ge=7, le=1460),
-                          granularity: str = Query("week")):
-    return await analytics.sales_trend(days, granularity)
-
-
-@app.get("/api/fast-movers")
-async def api_fast_movers(days: int = 30, top: int = 10):
-    return await analytics.fast_movers(days, top)
-
-
-@app.get("/api/category-performance")
-async def api_category(days: int = 365, top: int = 20):
-    return await analytics.category_performance(days, top)
-
-
-@app.get("/api/supplier-spend")
-async def api_supplier_spend(days: int = 365, top: int = 12):
-    return await analytics.supplier_spend(days, top)
-
-
-@app.get("/api/dead-stock")
-async def api_dead_stock(top: int = 15):
-    return await analytics.dead_stock(limit=top)
-
-
-@app.get("/api/reorder")
-async def api_reorder(limit: int = 15):
-    return await analytics.reorder_recommendations(limit=limit)
-
-
-@app.get("/api/aging-buckets")
-async def api_aging():
-    return await analytics.aging_inventory_buckets()
-
-
-@app.get("/api/tender-mix")
-async def api_tender(start_date: str, end_date: str):
-    return await analytics.tender_mix(start_date, end_date)
-
-
-@app.get("/api/hourly-heatmap")
-async def api_heatmap(days: int = 90):
-    return await analytics.hourly_heatmap(days)
-
-
-@app.get("/api/item-lookup")
-async def api_item_lookup(q: str, limit: int = 25):
-    return await analytics.item_lookup(q, limit)
-
-
-@app.get("/api/customer-rfm")
-async def api_rfm():
-    rows = await analytics.customer_rfm()
-    # Aggregate counts per segment for the dashboard chart
-    segments: dict[str, int] = {}
-    for r in rows:
-        segments[r["Segment"]] = segments.get(r["Segment"], 0) + 1
-    return {"segments": segments, "rows": rows[:50]}
-
-
-@app.get("/api/expected-stockout")
-async def api_expected_stockout(item_code: str, days: int = 90):
-    return await analytics.expected_stockout_date(item_code, days)
-
-
-# Friendly default for /mcp without trailing slash (some clients miss the
-# slash). Redirect to the canonical endpoint.
 @app.get("/mcp")
 async def mcp_root_redirect():
-    return JSONResponse(
-        {"error": "MCP endpoint is at /mcp/. Add the trailing slash."}
-    )
+    return JSONResponse({"error": "MCP endpoint is at /mcp/. Add the trailing slash."})
+
+
+# Static React build + SPA fallback.
+if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "index.html").exists():
+    assets = FRONTEND_DIST / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa_fallback(path: str):
+        if path.startswith(("api/", "mcp/", "auth/")):
+            raise HTTPException(404, "Not found")
+        candidate = FRONTEND_DIST / path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_DIST / "index.html")
+else:
+    @app.get("/", include_in_schema=False)
+    async def dev_landing():
+        return JSONResponse({
+            "message": "Frontend build not found.",
+            "hint": "Run `cd frontend && npm install && npm run build` first, "
+                     "or use `npm run dev` in dev (Vite proxies /api back here).",
+        })
