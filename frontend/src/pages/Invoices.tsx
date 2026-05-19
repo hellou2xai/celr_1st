@@ -7,8 +7,9 @@ import { KpiTile } from "@/components/KpiTile";
 
 interface InvoiceRow {
   ID: number; Supplier: string; InvoiceNumber: string;
-  InvoiceDate: string; GrossTotal: number; NetTotal: number;
-  Lines: number; Mapped: number; Unmapped: number; SourceFile: string;
+  InvoiceDate: string; Total: number;
+  Lines: number; Matched: number; Unmapped: number;
+  SourceFile: string; UploadedAt: string; Notes?: string;
 }
 
 export function Invoices() {
@@ -42,10 +43,9 @@ export function Invoices() {
                 <th className="px-3 py-2 text-left text-xs uppercase text-muted">Invoice #</th>
                 <th className="px-3 py-2 text-left text-xs uppercase text-muted">Supplier</th>
                 <th className="px-3 py-2 text-left text-xs uppercase text-muted">Date</th>
-                <th className="px-3 py-2 text-right text-xs uppercase text-muted">Gross</th>
-                <th className="px-3 py-2 text-right text-xs uppercase text-muted">Net</th>
+                <th className="px-3 py-2 text-right text-xs uppercase text-muted">Total</th>
                 <th className="px-3 py-2 text-right text-xs uppercase text-muted">Lines</th>
-                <th className="px-3 py-2 text-right text-xs uppercase text-muted">Mapped</th>
+                <th className="px-3 py-2 text-right text-xs uppercase text-muted">Matched</th>
                 <th className="px-3 py-2 text-right text-xs uppercase text-muted">Unmapped</th>
                 <th className="px-3 py-2 text-left text-xs uppercase text-muted">Source</th>
               </tr></thead>
@@ -57,10 +57,9 @@ export function Invoices() {
                     </td>
                     <td className="px-3 py-1.5">{r.Supplier}</td>
                     <td className="px-3 py-1.5">{dt(r.InvoiceDate)}</td>
-                    <td className="num px-3 py-1.5">{money(r.GrossTotal)}</td>
-                    <td className="num px-3 py-1.5">{money(r.NetTotal)}</td>
+                    <td className="num px-3 py-1.5">{money(r.Total)}</td>
                     <td className="num px-3 py-1.5">{num(r.Lines)}</td>
-                    <td className="num px-3 py-1.5 text-good">{num(r.Mapped)}</td>
+                    <td className="num px-3 py-1.5 text-good">{num(r.Matched)}</td>
                     <td className="num px-3 py-1.5 text-warn">{num(r.Unmapped)}</td>
                     <td className="px-3 py-1.5 text-xs text-muted">{r.SourceFile}</td>
                   </tr>
@@ -77,18 +76,22 @@ export function Invoices() {
 interface InvoiceDetailResp {
   header: {
     ID: number; Supplier: string; InvoiceNumber: string; InvoiceDate: string;
-    GrossTotal: number; NetTotal: number; Lines: number;
-    Mapped: number; Unmapped: number; Warnings?: string; SourceFile: string;
+    Total: number; Lines: number; Matched: number; Unmapped: number;
+    SourceFile: string; UploadedAt: string; Notes?: string;
   };
   lines: Array<{
-    ID: number; LineNumber: number; SupplierCode: string; RMSLookup: string;
-    Description: string; Quantity: number; UnitPrice: number;
-    LineTotal: number; MatchStatus: string; Notes?: string;
+    ID: number; LineNumber: number;
+    RawUPC: string; RawDescription: string;
+    Quantity: number; UnitPrice: number; LineTotal: number;
+    MatchedUPC?: string; MatchedDescription?: string;
+    MatchMethod?: string; MatchScore?: number; CostDeltaPct?: number;
+    Notes?: string;
   }>;
 }
 
 const MATCH_COLOR: Record<string, string> = {
-  mapped: "text-good", unmapped: "text-warn", manual: "text-info",
+  upc: "text-good", upc_user_rule: "text-good", upc_variant: "text-good",
+  desc_match: "text-info", manual: "text-info",
 };
 
 export function InvoiceDetail() {
@@ -108,34 +111,40 @@ export function InvoiceDetail() {
             <code className="text-accent">{q.data.header.InvoiceNumber}</code> · {q.data.header.Supplier} · {dt(q.data.header.InvoiceDate)}
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <KpiTile label="Gross" value={money(q.data.header.GrossTotal)}/>
-            <KpiTile label="Net" value={money(q.data.header.NetTotal)}/>
+            <KpiTile label="Total" value={money(q.data.header.Total)}/>
             <KpiTile label="Lines" value={num(q.data.header.Lines)}/>
+            <KpiTile label="Matched" value={num(q.data.header.Matched)} variant="good"/>
             <KpiTile label="Unmapped" value={num(q.data.header.Unmapped)} variant={q.data.header.Unmapped > 0 ? "warn" : "good"}/>
           </div>
           <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-sm">
               <thead className="bg-surface/60"><tr>
                 <th className="px-3 py-2 text-right text-xs uppercase text-muted">#</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Supplier code</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">RMS lookup</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Description</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Raw UPC</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Raw description</th>
                 <th className="px-3 py-2 text-right text-xs uppercase text-muted">Qty</th>
                 <th className="px-3 py-2 text-right text-xs uppercase text-muted">Unit</th>
                 <th className="px-3 py-2 text-right text-xs uppercase text-muted">Total</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Status</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Matched item</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Method</th>
               </tr></thead>
               <tbody>
                 {q.data.lines.map(l => (
                   <tr key={l.ID} className="border-t border-border/60">
                     <td className="num px-3 py-1.5">{l.LineNumber}</td>
-                    <td className="px-3 py-1.5 font-mono text-xs">{l.SupplierCode}</td>
-                    <td className="px-3 py-1.5 font-mono text-xs">{l.RMSLookup}</td>
-                    <td className="px-3 py-1.5">{l.Description}</td>
+                    <td className="px-3 py-1.5 font-mono text-xs">{l.RawUPC}</td>
+                    <td className="px-3 py-1.5">{l.RawDescription}</td>
                     <td className="num px-3 py-1.5">{num(l.Quantity)}</td>
                     <td className="num px-3 py-1.5">{money(l.UnitPrice, { digits: 2 })}</td>
                     <td className="num px-3 py-1.5">{money(l.LineTotal)}</td>
-                    <td className={"px-3 py-1.5 text-xs font-semibold " + (MATCH_COLOR[l.MatchStatus] ?? "text-muted")}>{l.MatchStatus}</td>
+                    <td className="px-3 py-1.5 text-xs">
+                      {l.MatchedUPC
+                        ? <span data-upc={l.MatchedUPC}><span className="font-mono">{l.MatchedUPC}</span> · {l.MatchedDescription}</span>
+                        : <span className="text-warn">unmapped</span>}
+                    </td>
+                    <td className={"px-3 py-1.5 text-xs font-semibold " + (MATCH_COLOR[l.MatchMethod ?? ""] ?? "text-muted")}>
+                      {l.MatchMethod ?? "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

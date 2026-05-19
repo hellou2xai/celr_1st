@@ -123,44 +123,58 @@ CREATE TABLE IF NOT EXISTS rip_upc_map (
 );
 CREATE INDEX IF NOT EXISTS idx_upc_map_rip_upc ON rip_upc_map(rip_upc);
 
-CREATE TABLE IF NOT EXISTS invoice_header (
-    id            INTEGER PRIMARY KEY,
-    supplier      TEXT,
-    invoice_number TEXT,
-    invoice_date  TEXT,
-    totals_gross  NUMERIC(18,4),
-    totals_net    NUMERIC(18,4),
-    source_file   TEXT,
-    line_count    INTEGER,
-    mapped        INTEGER,
-    unmapped      INTEGER,
-    warnings      TEXT,
-    created_at    TEXT
-);
+-- These three tables are dropped + recreated each run so a schema-mismatch
+-- fix is picked up automatically. Their data is tiny (~650 rows total) so
+-- the cost is negligible.
+DROP TABLE IF EXISTS invoice_line     CASCADE;
+DROP TABLE IF EXISTS invoice_header   CASCADE;
+DROP TABLE IF EXISTS risk_calc_alias  CASCADE;
 
-CREATE TABLE IF NOT EXISTS invoice_line (
-    id             INTEGER PRIMARY KEY,
-    invoice_id     INTEGER NOT NULL,
-    line_number    INTEGER,
-    supplier_code  TEXT,
-    rms_lookup     TEXT,
-    description    TEXT,
-    quantity       NUMERIC(18,3),
-    unit_price     NUMERIC(18,4),
-    line_total     NUMERIC(18,4),
-    match_status   TEXT,
-    notes          TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_invoice_line_invoice ON invoice_line(invoice_id);
-
-CREATE TABLE IF NOT EXISTS risk_calc_alias (
+CREATE TABLE invoice_header (
     id              INTEGER PRIMARY KEY,
-    alias_text      TEXT NOT NULL,
-    rms_lookup_code TEXT NOT NULL,
-    description     TEXT,
-    created_at      TEXT
+    filename        TEXT,
+    invoice_no      TEXT,
+    invoice_date    TEXT,
+    supplier        TEXT,
+    line_count      INTEGER,
+    matched_count   INTEGER,
+    total_cost      NUMERIC(18,4),
+    notes           TEXT,
+    uploaded_at     TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_risk_alias_text ON risk_calc_alias(alias_text);
+
+CREATE TABLE invoice_line (
+    id              INTEGER PRIMARY KEY,
+    invoice_id      INTEGER NOT NULL,
+    line_no         INTEGER,
+    raw_description TEXT,
+    raw_upc         TEXT,
+    qty             NUMERIC(18,3),
+    unit_price      NUMERIC(18,4),
+    line_total      NUMERIC(18,4),
+    item_id         INTEGER,
+    item_upc        TEXT,
+    item_description TEXT,
+    match_method    TEXT,
+    match_score     NUMERIC(18,4),
+    cost_delta_pct  NUMERIC(18,4),
+    notes           TEXT,
+    translated_qty  NUMERIC(18,3)
+);
+CREATE INDEX idx_invoice_line_invoice ON invoice_line(invoice_id);
+
+CREATE TABLE risk_calc_alias (
+    id               INTEGER PRIMARY KEY,
+    input_norm       TEXT,
+    input_raw        TEXT,
+    item_id          INTEGER,
+    item_upc         TEXT,
+    item_description TEXT,
+    use_count        INTEGER,
+    created_at       TEXT,
+    last_used_at     TEXT
+);
+CREATE INDEX idx_risk_alias_norm ON risk_calc_alias(input_norm);
 """
 
 
@@ -175,9 +189,9 @@ LOAD_SPEC = [
     ("rip_combo",       "rip_combo.csv",       ["id","month","abg_sku","combo_code","upc","brand","valid_from","valid_to","description","combo_pack_price","qty_items","qty_value","qty_unit","fline_price","combo_price","total_savings","comments"]),
     ("rip_match",       "rip_match.csv",       ["id","po_number","po_entry_id","item_id","upc","description","supplier","po_date","month","rip_program_id","rip_code","tier_qualified","qty_ordered","qty_unit","case_pack","rebate_amount","expected_paid_after","expected_paid_before","status","received_amount","received_on","notes","created_at","updated_at"]),
     ("rip_upc_map",     "rip_upc_map.csv",     ["rip_upc","item_id","item_code","match_method","match_score","rip_description","item_description","has_po_history"]),
-    ("invoice_header",  "invoice_header.csv",  ["id","supplier","invoice_number","invoice_date","totals_gross","totals_net","source_file","line_count","mapped","unmapped","warnings","created_at"]),
-    ("invoice_line",    "invoice_line.csv",    ["id","invoice_id","line_number","supplier_code","rms_lookup","description","quantity","unit_price","line_total","match_status","notes"]),
-    ("risk_calc_alias", "risk_calc_alias.csv", ["id","alias_text","rms_lookup_code","description","created_at"]),
+    ("invoice_header",  "invoice_header.csv",  ["id","filename","invoice_no","invoice_date","supplier","line_count","matched_count","total_cost","notes","uploaded_at"]),
+    ("invoice_line",    "invoice_line.csv",    ["id","invoice_id","line_no","raw_description","raw_upc","qty","unit_price","line_total","item_id","item_upc","item_description","match_method","match_score","cost_delta_pct","notes","translated_qty"]),
+    ("risk_calc_alias", "risk_calc_alias.csv", ["id","input_norm","input_raw","item_id","item_upc","item_description","use_count","created_at","last_used_at"]),
 ]
 
 

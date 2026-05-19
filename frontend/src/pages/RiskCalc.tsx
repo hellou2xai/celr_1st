@@ -111,8 +111,9 @@ export function RiskCalc() {
 }
 
 interface Alias {
-  ID: number; Alias: string; RMSCode: string;
-  Description: string; CreatedAt: string;
+  ID: number; Alias: string; RawInput: string;
+  ItemUPC: string; ItemDescription: string; ItemID: number;
+  UseCount: number; CreatedAt: string; LastUsedAt: string;
 }
 
 export function RiskCalcAliases() {
@@ -123,7 +124,7 @@ export function RiskCalcAliases() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-1">Risk Calc Aliases</h1>
-      <p className="text-sm text-muted mb-4">Maps supplier UPC variants to canonical RMS lookup codes. Used by the Pre-PO Risk Calculator.</p>
+      <p className="text-sm text-muted mb-4">Saved mappings from buyer free-text input → canonical item. Used by the Pre-PO Risk Calculator to resolve UPC variants and descriptive names.</p>
       {q.isLoading && <div className="text-muted">Loading…</div>}
       {q.data && !q.data.rows.length && (
         <p className="text-sm text-muted">No aliases yet.</p>
@@ -134,18 +135,22 @@ export function RiskCalcAliases() {
           <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-sm">
               <thead className="bg-surface/60"><tr>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Alias</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">RMS code</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Description</th>
-                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Created</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Alias (normalized)</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Raw input</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Mapped UPC</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Mapped item</th>
+                <th className="px-3 py-2 text-right text-xs uppercase text-muted">Uses</th>
+                <th className="px-3 py-2 text-left text-xs uppercase text-muted">Last used</th>
               </tr></thead>
               <tbody>
                 {q.data.rows.map(r => (
                   <tr key={r.ID} className="border-t border-border/60">
                     <td className="px-3 py-1.5 font-mono">{r.Alias}</td>
-                    <td className="px-3 py-1.5 font-mono">{r.RMSCode}</td>
-                    <td className="px-3 py-1.5">{r.Description}</td>
-                    <td className="px-3 py-1.5 text-xs text-muted">{dt(r.CreatedAt)}</td>
+                    <td className="px-3 py-1.5 text-xs">{r.RawInput}</td>
+                    <td className="px-3 py-1.5 font-mono" data-upc={r.ItemUPC}>{r.ItemUPC}</td>
+                    <td className="px-3 py-1.5">{r.ItemDescription}</td>
+                    <td className="num px-3 py-1.5">{num(r.UseCount)}</td>
+                    <td className="px-3 py-1.5 text-xs text-muted">{dt(r.LastUsedAt)}</td>
                   </tr>
                 ))}
               </tbody>

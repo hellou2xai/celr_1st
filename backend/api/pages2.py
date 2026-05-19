@@ -243,15 +243,19 @@ async def invoices(supplier: Optional[str] = None,
         conds.append(f"supplier ILIKE ${len(args)}")
     if q:
         args.append(f"%{q}%")
-        conds.append(f"(invoice_number ILIKE ${len(args)} OR source_file ILIKE ${len(args)})")
+        conds.append(f"(invoice_no ILIKE ${len(args)} OR filename ILIKE ${len(args)})")
     rows = await fetch(f"""
-        SELECT id AS "ID", supplier AS "Supplier",
-               invoice_number AS "InvoiceNumber",
+        SELECT id AS "ID",
+               supplier AS "Supplier",
+               invoice_no AS "InvoiceNumber",
                invoice_date AS "InvoiceDate",
-               totals_gross AS "GrossTotal", totals_net AS "NetTotal",
+               total_cost AS "Total",
                line_count AS "Lines",
-               mapped AS "Mapped", unmapped AS "Unmapped",
-               source_file AS "SourceFile"
+               matched_count AS "Matched",
+               (COALESCE(line_count, 0) - COALESCE(matched_count, 0)) AS "Unmapped",
+               filename AS "SourceFile",
+               uploaded_at AS "UploadedAt",
+               notes AS "Notes"
         FROM invoice_header
         WHERE {" AND ".join(conds)}
         ORDER BY invoice_date DESC NULLS LAST, id DESC
@@ -263,30 +267,37 @@ async def invoices(supplier: Optional[str] = None,
 @router.get("/invoices/{invoice_id}")
 async def invoice_detail(invoice_id: int, _=Depends(_u)):
     header = await fetchrow("""
-        SELECT id AS "ID", supplier AS "Supplier",
-               invoice_number AS "InvoiceNumber",
+        SELECT id AS "ID",
+               supplier AS "Supplier",
+               invoice_no AS "InvoiceNumber",
                invoice_date AS "InvoiceDate",
-               totals_gross AS "GrossTotal", totals_net AS "NetTotal",
+               total_cost AS "Total",
                line_count AS "Lines",
-               mapped AS "Mapped", unmapped AS "Unmapped",
-               warnings AS "Warnings",
-               source_file AS "SourceFile"
+               matched_count AS "Matched",
+               (COALESCE(line_count, 0) - COALESCE(matched_count, 0)) AS "Unmapped",
+               filename AS "SourceFile",
+               uploaded_at AS "UploadedAt",
+               notes AS "Notes"
         FROM invoice_header WHERE id = $1
     """, invoice_id)
     if not header:
         raise HTTPException(404, "Invoice not found")
     lines = await fetch("""
-        SELECT id AS "ID", line_number AS "LineNumber",
-               supplier_code AS "SupplierCode",
-               rms_lookup AS "RMSLookup",
-               description AS "Description",
-               quantity AS "Quantity",
+        SELECT id AS "ID",
+               line_no AS "LineNumber",
+               raw_upc AS "RawUPC",
+               raw_description AS "RawDescription",
+               qty AS "Quantity",
                unit_price AS "UnitPrice",
                line_total AS "LineTotal",
-               match_status AS "MatchStatus",
+               item_upc AS "MatchedUPC",
+               item_description AS "MatchedDescription",
+               match_method AS "MatchMethod",
+               match_score AS "MatchScore",
+               cost_delta_pct AS "CostDeltaPct",
                notes AS "Notes"
         FROM invoice_line WHERE invoice_id = $1
-        ORDER BY line_number, id
+        ORDER BY line_no, id
     """, invoice_id)
     return {"header": header, "lines": lines}
 
@@ -298,12 +309,17 @@ async def invoice_detail(invoice_id: int, _=Depends(_u)):
 @router.get("/risk-calc/aliases")
 async def risk_calc_aliases(_=Depends(_u)):
     rows = await fetch("""
-        SELECT id AS "ID", alias_text AS "Alias",
-               rms_lookup_code AS "RMSCode",
-               description AS "Description",
-               created_at AS "CreatedAt"
+        SELECT id AS "ID",
+               input_norm AS "Alias",
+               input_raw AS "RawInput",
+               item_upc AS "ItemUPC",
+               item_description AS "ItemDescription",
+               item_id AS "ItemID",
+               use_count AS "UseCount",
+               created_at AS "CreatedAt",
+               last_used_at AS "LastUsedAt"
         FROM risk_calc_alias
-        ORDER BY alias_text
+        ORDER BY use_count DESC NULLS LAST, input_norm
     """)
     return {"rows": rows, "count": len(rows)}
 
