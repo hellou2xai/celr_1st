@@ -161,6 +161,14 @@ REASON_CODES = [
 def load_catalog(cn: psycopg.Connection) -> None:
     log("Phase 1: catalog & reference data")
 
+    # If a real catalog hasn't been extracted yet, generate a plausible
+    # synthetic one so the deploy still works. Real CSVs (when present)
+    # always win — this is just a fallback.
+    from . import synthetic_catalog
+    if synthetic_catalog.ensure_present(DATA, seed=SYNTH_SEED):
+        log("  (synthetic catalog generated — run extract/extract_real_catalog.py "
+            "and push for real WINEZONE data)")
+
     n = copy_csv(cn, "department", DATA / "departments.csv", ["id", "name"])
     log(f"  department: {n} rows")
 
