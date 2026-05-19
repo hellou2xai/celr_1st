@@ -898,6 +898,15 @@ def main() -> None:
         generate_purchase_orders(cn)
         generate_supporting_events(cn, cashier_ids)
 
+        # RIP + invoice + risk-calc-alias data. If data/rip_*.csv files
+        # exist (produced by extract/extract_rip.py), load them. Otherwise
+        # synthesize. Idempotent — skips if already populated unless
+        # FORCE_RIP_RELOAD=true.
+        log("Phase 3d: RIP / invoices / aliases")
+        from . import seed_rip
+        result = seed_rip.ensure(cn, seed=SYNTH_SEED, log=lambda m: log(m))
+        log(f"  source: {result}")
+
         log("Phase 4: analyze tables")
         with cn.cursor() as cur:
             cur.execute("ANALYZE")

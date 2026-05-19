@@ -229,17 +229,83 @@ async def po_detail(po_number: str, _=Depends(_u)):
 
 
 # ============================================================== #
-# INVOICES (demo seed does not parse PDFs; return empty list)
+# INVOICES — loaded from invoice_header / invoice_line CSVs.
 # ============================================================== #
 
 @router.get("/invoices")
-async def invoices(_=Depends(_u)):
-    return {"rows": [], "note": "Invoice ingestion uses PDF parsing — not yet wired in the Render demo seed."}
+async def invoices(supplier: Optional[str] = None,
+                   q: Optional[str] = None,
+                   limit: int = 200, _=Depends(_u)):
+    args: list = []
+    conds = ["1=1"]
+    if supplier:
+        args.append(f"%{supplier}%")
+        conds.append(f"supplier ILIKE ${len(args)}")
+    if q:
+        args.append(f"%{q}%")
+        conds.append(f"(invoice_number ILIKE ${len(args)} OR source_file ILIKE ${len(args)})")
+    rows = await fetch(f"""
+        SELECT id AS "ID", supplier AS "Supplier",
+               invoice_number AS "InvoiceNumber",
+               invoice_date AS "InvoiceDate",
+               totals_gross AS "GrossTotal", totals_net AS "NetTotal",
+               line_count AS "Lines",
+               mapped AS "Mapped", unmapped AS "Unmapped",
+               source_file AS "SourceFile"
+        FROM invoice_header
+        WHERE {" AND ".join(conds)}
+        ORDER BY invoice_date DESC NULLS LAST, id DESC
+        LIMIT {int(limit)}
+    """, *args)
+    return {"rows": rows, "count": len(rows)}
 
 
 @router.get("/invoices/{invoice_id}")
 async def invoice_detail(invoice_id: int, _=Depends(_u)):
-    raise HTTPException(404, "Invoice not found")
+    header = await fetchrow("""
+        SELECT id AS "ID", supplier AS "Supplier",
+               invoice_number AS "InvoiceNumber",
+               invoice_date AS "InvoiceDate",
+               totals_gross AS "GrossTotal", totals_net AS "NetTotal",
+               line_count AS "Lines",
+               mapped AS "Mapped", unmapped AS "Unmapped",
+               warnings AS "Warnings",
+               source_file AS "SourceFile"
+        FROM invoice_header WHERE id = $1
+    """, invoice_id)
+    if not header:
+        raise HTTPException(404, "Invoice not found")
+    lines = await fetch("""
+        SELECT id AS "ID", line_number AS "LineNumber",
+               supplier_code AS "SupplierCode",
+               rms_lookup AS "RMSLookup",
+               description AS "Description",
+               quantity AS "Quantity",
+               unit_price AS "UnitPrice",
+               line_total AS "LineTotal",
+               match_status AS "MatchStatus",
+               notes AS "Notes"
+        FROM invoice_line WHERE invoice_id = $1
+        ORDER BY line_number, id
+    """, invoice_id)
+    return {"header": header, "lines": lines}
+
+
+# ============================================================== #
+# RISK-CALC ALIASES (loaded from risk_calc_alias CSV)
+# ============================================================== #
+
+@router.get("/risk-calc/aliases")
+async def risk_calc_aliases(_=Depends(_u)):
+    rows = await fetch("""
+        SELECT id AS "ID", alias_text AS "Alias",
+               rms_lookup_code AS "RMSCode",
+               description AS "Description",
+               created_at AS "CreatedAt"
+        FROM risk_calc_alias
+        ORDER BY alias_text
+    """)
+    return {"rows": rows, "count": len(rows)}
 
 
 # ============================================================== #
@@ -366,26 +432,174 @@ async def order_suggestions(weeks: int = 12, velocity_months: int = 18,
 
 
 # ============================================================== #
-# RIP — seed doesn't currently ingest ABG distributor files.
-# Endpoints return empty payloads with a friendly note.
+# RIP — backed by rip_program / rip_combo / rip_match (extracted from
+# the original SQLite store via extract/extract_rip.py).
 # ============================================================== #
 
-@router.get("/rip-order-suggestions")
-async def rip_order_suggestions(_=Depends(_u)):
-    return {"rows": [], "summary": {"lines": 0, "potential_rebate": 0},
-            "note": "RIP program data not ingested in the Render demo seed."}
+async def _rip_months_available() -> list[dict]:
+    return await fetch("""
+        SELECT month AS "Month", label AS "Label",
+               rip_rows AS "Programs", combo_rows AS "Combos"
+        FROM rip_month
+        ORDER BY month DESC
+    """)
 
 
 @router.get("/rip/programs")
-async def rip_programs(month: Optional[str] = None, _=Depends(_u)):
-    return {"rows": [], "summary": {"programs": 0, "potential_rebate": 0},
-            "months": [], "month": month or "",
-            "note": "RIP program data not ingested in the Render demo seed."}
+async def rip_programs(month: Optional[str] = None,
+                       supplier: Optional[str] = None,
+                       brand: Optional[str] = None,
+                       q: Optional[str] = None,
+                       limit: int = 500,
+                       _=Depends(_u)):
+    months = await _rip_months_available()
+    if not months:
+        return {"rows": [], "summary": {"programs": 0, "potential_rebate": 0},
+                "months": [], "month": "",
+                "note": "No RIP data loaded yet. Run extract_rip.py and push CSVs."}
+
+    if not month:
+        month = months[0]["Month"]
+
+    args: list = [month]
+    conds = ["p.month = $1"]
+    if brand:
+        args.append(f"%{brand}%"); conds.append(f"p.brand ILIKE ${len(args)}")
+    if q:
+        args.append(f"%{q}%"); conds.append(f"(p.description ILIKE ${len(args)} OR p.upc ILIKE ${len(args)})")
+    if supplier:
+        args.append(f"%{supplier}%"); conds.append(f"COALESCE(s.supplier_name,'') ILIKE ${len(args)}")
+
+    sql = f"""
+      SELECT p.id, p.month AS "Month", p.upc AS "UPC", p.brand AS "Brand",
+             p.description AS "Description", p.rip_code AS "RipCode",
+             p.abg_sku AS "AbgSku",
+             p.valid_from AS "ValidFrom", p.valid_to AS "ValidTo",
+             p.tier1_unit AS "Tier1Unit", p.tier1_qty AS "Tier1Qty",
+             p.tier1_rebate AS "Tier1Rebate",
+             p.tier2_unit AS "Tier2Unit", p.tier2_qty AS "Tier2Qty",
+             p.tier2_rebate AS "Tier2Rebate",
+             p.comments AS "Comments",
+             i.id AS "ItemID", i.quantity AS "OnHand",
+             COALESCE(s.supplier_name,'') AS "Supplier"
+      FROM rip_program p
+      LEFT JOIN item i ON i.item_lookup_code = p.upc
+      LEFT JOIN supplier s ON i.supplier_id = s.id
+      WHERE {" AND ".join(conds)}
+      ORDER BY p.brand, p.description
+      LIMIT {int(limit)}
+    """
+    rows = await fetch(sql, *args)
+    potential_rebate = sum(
+        (float(r["Tier1Qty"] or 0) * float(r["Tier1Rebate"] or 0)) +
+        (float(r["Tier2Qty"] or 0) * float(r["Tier2Rebate"] or 0))
+        for r in rows
+    )
+    return {
+        "rows": rows,
+        "summary": {
+            "programs": len(rows),
+            "potential_rebate": potential_rebate,
+        },
+        "months": months,
+        "month": month,
+    }
+
+
+@router.get("/rip-order-suggestions")
+async def rip_order_suggestions(month: Optional[str] = None,
+                                 supplier: Optional[str] = None,
+                                 limit: int = 500, _=Depends(_u)):
+    months = await _rip_months_available()
+    if not months:
+        return {"rows": [], "summary": {"lines": 0, "potential_rebate": 0},
+                "months": [], "month": "",
+                "note": "No RIP data loaded yet."}
+    if not month:
+        month = months[0]["Month"]
+    args: list = [month, 180]
+    conds = ["p.month = $1"]
+    if supplier:
+        args.append(f"%{supplier}%"); conds.append(f"COALESCE(s.supplier_name,'') ILIKE ${len(args)}")
+
+    # For each RIP program in the chosen month, compute velocity-based
+    # reorder advice — items below typical cover get flagged.
+    sql = f"""
+      WITH velocity AS (
+        SELECT te.item_id, SUM(te.quantity)/180.0 AS daily_units
+        FROM transaction_entry te
+        WHERE te.transaction_time >= NOW() - make_interval(days => $2)
+          AND te.quantity > 0
+        GROUP BY te.item_id
+      )
+      SELECT p.id, p.upc AS "UPC", p.description AS "Description",
+             p.brand AS "Brand", p.rip_code AS "RipCode",
+             p.tier1_qty AS "Tier1Qty", p.tier1_rebate AS "Tier1Rebate",
+             p.tier2_qty AS "Tier2Qty", p.tier2_rebate AS "Tier2Rebate",
+             p.valid_from AS "ValidFrom", p.valid_to AS "ValidTo",
+             i.id AS "ItemID", i.quantity AS "OnHand",
+             COALESCE(s.supplier_name,'') AS "Supplier",
+             COALESCE(v.daily_units, 0) AS "DailyUnits",
+             CASE WHEN COALESCE(v.daily_units,0) > 0
+                  THEN (i.quantity / (v.daily_units * 30))
+                  ELSE NULL END AS "MoSNow",
+             CASE WHEN COALESCE(v.daily_units,0) > 0
+                  THEN GREATEST(p.tier1_qty,
+                                CEIL(v.daily_units * 60 - i.quantity))
+                  ELSE p.tier1_qty END AS "SuggestedQty",
+             (p.tier1_qty * p.tier1_rebate) AS "ExpectedRebate"
+      FROM rip_program p
+      JOIN item i ON i.item_lookup_code = p.upc
+      LEFT JOIN supplier s ON i.supplier_id = s.id
+      LEFT JOIN velocity v ON v.item_id = i.id
+      WHERE {" AND ".join(conds)}
+        AND i.inactive = 0
+      ORDER BY (p.tier1_qty * p.tier1_rebate) DESC NULLS LAST
+      LIMIT {int(limit)}
+    """
+    rows = await fetch(sql, *args)
+    return {
+        "rows": rows,
+        "summary": {
+            "lines": len(rows),
+            "potential_rebate": sum(float(r["ExpectedRebate"] or 0) for r in rows),
+        },
+        "months": months,
+        "month": month,
+    }
 
 
 @router.get("/rip/optimize")
-async def rip_optimize(_=Depends(_u)):
-    return {"rows": [], "note": "RIP program data not ingested."}
+async def rip_optimize(month: Optional[str] = None, _=Depends(_u)):
+    months = await _rip_months_available()
+    if not months:
+        return {"combos": [], "months": [], "month": "",
+                "note": "No RIP data loaded yet."}
+    if not month:
+        month = months[0]["Month"]
+    rows = await fetch("""
+        SELECT c.id, c.combo_code AS "ComboCode", c.upc AS "UPC",
+               c.brand AS "Brand", c.description AS "Description",
+               c.qty_value AS "QtyItems", c.qty_unit AS "QtyUnit",
+               c.fline_price AS "FlinePrice", c.combo_price AS "ComboPrice",
+               c.total_savings AS "Savings",
+               c.valid_from AS "ValidFrom", c.valid_to AS "ValidTo",
+               i.id AS "ItemID", i.quantity AS "OnHand"
+        FROM rip_combo c
+        LEFT JOIN item i ON i.item_lookup_code = c.upc
+        WHERE c.month = $1
+        ORDER BY c.total_savings DESC NULLS LAST
+        LIMIT 500
+    """, month)
+    return {
+        "combos": rows,
+        "summary": {
+            "combos": len(rows),
+            "total_savings": sum(float(r["Savings"] or 0) for r in rows),
+        },
+        "months": months,
+        "month": month,
+    }
 
 
 @router.get("/rip-item/{item_id}")
@@ -399,8 +613,77 @@ async def rip_item_detail(item_id: int, _=Depends(_u)):
     """, item_id)
     if not item:
         raise HTTPException(404, "Item not found")
-    return {"item": dict(item), "programs": [], "claims": [],
-            "note": "RIP program data not ingested in the Render demo seed."}
+    upc = item["item_lookup_code"]
+    programs = await fetch("""
+        SELECT id, month AS "Month", brand AS "Brand", description AS "Description",
+               rip_code AS "RipCode",
+               tier1_unit AS "Tier1Unit", tier1_qty AS "Tier1Qty",
+               tier1_rebate AS "Tier1Rebate",
+               tier2_unit AS "Tier2Unit", tier2_qty AS "Tier2Qty",
+               tier2_rebate AS "Tier2Rebate",
+               valid_from AS "ValidFrom", valid_to AS "ValidTo"
+        FROM rip_program WHERE upc = $1
+        ORDER BY month DESC
+    """, upc)
+    combos = await fetch("""
+        SELECT id, month AS "Month", combo_code AS "ComboCode",
+               qty_value AS "QtyItems", qty_unit AS "QtyUnit",
+               fline_price AS "FlinePrice", combo_price AS "ComboPrice",
+               total_savings AS "Savings",
+               valid_from AS "ValidFrom", valid_to AS "ValidTo"
+        FROM rip_combo WHERE upc = $1
+        ORDER BY month DESC
+    """, upc)
+    claims = await fetch("""
+        SELECT id, po_number AS "PONumber", po_date AS "PODate",
+               month AS "Month", rip_code AS "RipCode",
+               tier_qualified AS "Tier",
+               qty_ordered AS "Qty", rebate_amount AS "Rebate",
+               status AS "Status", received_on AS "ReceivedOn",
+               received_amount AS "ReceivedAmount", notes AS "Notes",
+               expected_paid_before AS "DueBy"
+        FROM rip_match WHERE upc = $1
+        ORDER BY po_date DESC NULLS LAST
+        LIMIT 100
+    """, upc)
+    return {"item": dict(item), "programs": programs,
+            "combos": combos, "claims": claims}
+
+
+@router.get("/rip/matches")
+async def rip_matches(month: Optional[str] = None,
+                       status: Optional[str] = None,
+                       limit: int = 500, _=Depends(_u)):
+    months = await _rip_months_available()
+    if not months:
+        return {"rows": [], "summary": {}, "months": [], "month": ""}
+    if not month:
+        month = months[0]["Month"]
+    args: list = [month]
+    conds = ["month = $1"]
+    if status and status not in ("", "Any"):
+        args.append(status); conds.append(f"status = ${len(args)}")
+    rows = await fetch(f"""
+        SELECT id, po_number AS "PONumber", po_date AS "PODate",
+               upc AS "UPC", description AS "Description",
+               supplier AS "Supplier", rip_code AS "RipCode",
+               tier_qualified AS "Tier",
+               qty_ordered AS "Qty", rebate_amount AS "Rebate",
+               status AS "Status", received_on AS "ReceivedOn",
+               received_amount AS "ReceivedAmount",
+               expected_paid_before AS "DueBy"
+        FROM rip_match
+        WHERE {" AND ".join(conds)}
+        ORDER BY po_date DESC NULLS LAST
+        LIMIT {int(limit)}
+    """, *args)
+    by_status: dict[str, dict] = {}
+    for r in rows:
+        b = by_status.setdefault(r["Status"], {"Status": r["Status"], "Count": 0, "Rebate": 0})
+        b["Count"] += 1
+        b["Rebate"] += float(r["Rebate"] or 0)
+    return {"rows": rows, "by_status": list(by_status.values()),
+            "months": months, "month": month}
 
 
 # ============================================================== #
