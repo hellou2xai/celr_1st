@@ -878,7 +878,15 @@ def main() -> None:
     t0 = time.time()
     with psycopg.connect(DATABASE_URL, autocommit=False) as cn:
         if not FORCE_RESEED and already_seeded(cn):
-            log("Already seeded — exiting (use FORCE_RESEED=true to redo)")
+            log("Main seed marker present — skipping phases 1-3.")
+            # Auxiliary loaders still run unconditionally (each is idempotent)
+            # so a redeploy after pushing new RIP / invoice CSVs picks them up
+            # without a full reseed.
+            log("Auxiliary phase: RIP / invoices / aliases")
+            from . import seed_rip
+            result = seed_rip.ensure(cn, seed=SYNTH_SEED, log=lambda m: log(m))
+            log(f"  source: {result}")
+            log(f"Done in {time.time()-t0:.0f}s")
             return
 
         log("Applying schema")

@@ -15,6 +15,7 @@ venv/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/tsconfig.tsbuildinfo
 node-v20.18.0-linux-x64/
 
 # Editor
