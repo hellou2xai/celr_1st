@@ -48,21 +48,14 @@ services:
       - key: RENDER
         value: "true"
 
-      # Auth — flip when you wire up Resend.
-      - key: AUTH_ALLOWED_EMAILS
-        value: hello@u2xai.com
-      - key: AUTH_ALLOWED_DOMAINS
-        value: ""
-      - key: AUTH_EMAIL_PROVIDER
-        value: none   # set to "resend" after configuring RESEND_API_KEY
+      # Auth — username / password. Change these in the Render dashboard
+      # for anything beyond a demo. Both default to "admin".
+      - key: AUTH_USERNAME
+        value: admin
+      - key: AUTH_PASSWORD
+        value: admin
       - key: AUTH_SECRET
-        generateValue: true   # 256-bit random, regenerated per env
-      # - key: RESEND_API_KEY
-      #   sync: false
-      # - key: RESEND_FROM
-      #   value: "CELR <noreply@u2xai.com>"
-      # - key: PUBLIC_URL
-      #   value: https://celr-procurement.onrender.com
+        generateValue: true   # 256-bit random session-cookie secret
 
 databases:
   # Render's current Postgres plan names use hyphens (not underscores).

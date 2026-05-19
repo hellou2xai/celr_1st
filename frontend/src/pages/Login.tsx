@@ -4,33 +4,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function Login() {
-  const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [stage, setStage] = useState<"email" | "sent" | "done">("email");
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const requestLink = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
+    setLoading(true);
     try {
-      const r = await api.post<{ ok: boolean; dev_token?: string }>(
-        "/auth/request", { email }
-      );
-      setStage("sent");
-      if (r.dev_token) setToken(r.dev_token);
-    } catch (e: any) {
-      setErr(e?.body?.detail || e?.message || "Request failed.");
-    }
-  };
-
-  const verify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    try {
-      await api.post("/auth/verify", { email, token });
+      await api.post("/auth/login", { username, password });
       window.location.href = "/";
     } catch (e: any) {
-      setErr(e?.body?.detail || e?.message || "Verification failed.");
+      setErr(e?.body?.detail || e?.message || "Sign-in failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -40,36 +29,36 @@ export function Login() {
         <h1 className="text-xl font-bold mb-1">CELR Procurement</h1>
         <p className="text-sm text-muted mb-6">Sign in to continue</p>
 
-        {stage === "email" && (
-          <form onSubmit={requestLink} className="flex flex-col gap-3">
-            <label className="text-xs text-muted">Email</label>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <label className="text-xs text-muted">Username
             <Input
-              type="email" required value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              autoComplete="username"
+              required
+              className="mt-1"
             />
-            <Button type="submit">Send magic link</Button>
-          </form>
-        )}
-
-        {stage === "sent" && (
-          <form onSubmit={verify} className="flex flex-col gap-3">
-            <p className="text-sm">
-              Check <b>{email}</b> for a sign-in link. Or paste the token below.
-            </p>
-            <label className="text-xs text-muted">Token</label>
-            <Input value={token} onChange={e => setToken(e.target.value)} placeholder="token-from-email" />
-            <Button type="submit">Sign in</Button>
-            <button type="button" className="text-xs text-muted hover:text-fg mt-2" onClick={() => setStage("email")}>
-              ← use a different email
-            </button>
-          </form>
-        )}
-
-        {err && <p className="text-sm text-bad mt-3">{err}</p>}
+          </label>
+          <label className="text-xs text-muted">Password
+            <Input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              className="mt-1"
+            />
+          </label>
+          <Button type="submit" disabled={loading}>
+            {loading ? "Signing in…" : "Sign in"}
+          </Button>
+          {err && <p className="text-sm text-bad mt-1">{err}</p>}
+        </form>
 
         <p className="text-[11px] text-muted/70 mt-6">
-          Magic-link uses one-time, time-limited tokens. Allowlisted addresses only.
+          Demo credentials are <code>admin</code> / <code>admin</code> unless
+          overridden via <code>AUTH_USERNAME</code> / <code>AUTH_PASSWORD</code>
+          env vars in Render.
         </p>
       </div>
     </div>
