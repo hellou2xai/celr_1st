@@ -261,35 +261,55 @@ def _has_real_data() -> bool:
 def ensure(cn: psycopg.Connection, seed: int = 20260518, log=print) -> str:
     """Apply schema and load RIP / invoice / alias data.
 
-    Returns one of: 'real', 'synthetic', 'skipped'.
+    Each table is loaded independently — if a table is empty, we attempt
+    to populate it from its CSV. Tables that already have rows are
+    skipped unless FORCE_RIP_RELOAD=true. This lets us fix schema mismatches
+    on individual tables (drop + recreate in SCHEMA) without forcing a
+    full reload of the bigger tables.
+
+    Returns one of: 'real', 'synthetic', 'skipped', 'partial'.
     """
     _ensure_schema(cn)
 
-    have_rows = _table_row_count(cn, "rip_program") > 0
-    if have_rows and not FORCE:
-        return "skipped"
-    if have_rows and FORCE:
+    if FORCE:
         log("  FORCE_RIP_RELOAD=true — truncating existing rows")
         _truncate_all(cn)
 
     if _has_real_data():
-        total = 0
+        loaded_any = False
+        skipped_any = False
         for table, fname, cols in LOAD_SPEC:
+            if _table_row_count(cn, table) > 0:
+                log(f"  {table}: already populated, skipping")
+                skipped_any = True
+                continue
             n = _copy_csv(cn, table, _csv_path(fname), cols)
             if n:
                 log(f"  {table}: {n:,} rows (real)")
-                total += n
+                loaded_any = True
         # Reset SERIAL sequences so future inserts don't collide with
-        # imported ids.
+        # imported ids. Only for tables that have an id sequence; the
+        # primary key 'id' is INTEGER (not SERIAL) for tables loaded
+        # from CSV, so pg_get_serial_sequence may return NULL — safe.
         with cn.cursor() as cur:
             for table, *_ in LOAD_SPEC:
-                cur.execute(f"""
-                    SELECT setval(pg_get_serial_sequence('{table}', 'id'),
-                                  COALESCE((SELECT MAX(id) FROM {table}), 0) + 1,
-                                  false)
-                """)
+                try:
+                    cur.execute(f"""
+                        SELECT pg_get_serial_sequence('{table}', 'id')
+                    """)
+                    seq = cur.fetchone()[0]
+                    if seq:
+                        cur.execute(f"""
+                            SELECT setval(%s,
+                                          COALESCE((SELECT MAX(id) FROM {table}), 0) + 1,
+                                          false)
+                        """, (seq,))
+                except Exception:
+                    pass
         cn.commit()
-        return "real"
+        if loaded_any and skipped_any: return "partial"
+        if loaded_any: return "real"
+        return "skipped"
 
     # ----------------------- Synthetic fallback -----------------------
     log("  no rip_program.csv found — generating synthetic data")
