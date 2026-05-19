@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+node-v20.18.0-linux-x64/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.log
+.DS_Store
+
+# Local seed artefacts
+seed/.bootstrap_done
+data/transactions.csv
+data/transaction_entries.csv
+data/tender_entries.csv
+
+# Local backups
+backend_old_app/

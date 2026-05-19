@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  body {
+    font-family: theme('fontFamily.sans');
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  *:focus-visible { outline: 2px solid theme('colors.accent'); outline-offset: 2px; }
+  table { font-variant-numeric: tabular-nums; }
+}
+
+@layer components {
+  .num   { @apply text-right font-mono; }
+  .sub   { @apply text-muted text-xs; }
+
+  /* Risk badges */
+  .badge { @apply inline-block px-2 py-0.5 rounded text-[11px] font-semibold; }
+  .badge-critical    { @apply bg-bad/20    text-bad; }
+  .badge-high        { @apply bg-bad/15    text-bad; }
+  .badge-moderate    { @apply bg-warn/15   text-warn; }
+  .badge-healthy     { @apply bg-good/15   text-good; }
+  .badge-excess      { @apply bg-info/15   text-info; }
+  .badge-dead        { @apply bg-muted/15  text-muted; }
+  .badge-outof, .badge-out  { @apply bg-bad/20 text-bad; }
+}

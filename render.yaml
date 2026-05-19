@@ -1,0 +1,72 @@
+# Render blueprint for the CELR Procurement React + FastAPI demo.
+#
+# One service serves three things:
+#   - React SPA (built by `npm run build` into frontend/dist)
+#   - JSON API at /api/*
+#   - MCP server at /mcp/
+#
+# The seed step (Postgres bootstrap) runs as preDeployCommand and is
+# idempotent via the seed_marker table.
+
+services:
+  - type: web
+    name: celr-procurement
+    runtime: python
+    plan: starter
+    region: oregon
+    branch: main
+    rootDir: .
+    buildCommand: |
+      set -euo pipefail
+      curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz | tar -xJ
+      export PATH="$PWD/node-v20.18.0-linux-x64/bin:$PATH"
+      cd frontend
+      npm ci
+      npm run build
+      cd ..
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    preDeployCommand: python -m seed.seed
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT --workers 2
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: celr-procurement-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: SYNTH_YEARS
+        value: 4
+      - key: SYNTH_SEED
+        value: 20260518
+      - key: SYNTH_DAY_TXN_CAP
+        value: 0
+      - key: RENDER
+        value: "true"
+
+      # Auth — flip when you wire up Resend.
+      - key: AUTH_ALLOWED_EMAILS
+        value: hello@u2xai.com
+      - key: AUTH_ALLOWED_DOMAINS
+        value: ""
+      - key: AUTH_EMAIL_PROVIDER
+        value: none   # set to "resend" after configuring RESEND_API_KEY
+      - key: AUTH_SECRET
+        generateValue: true   # 256-bit random, regenerated per env
+      # - key: RESEND_API_KEY
+      #   sync: false
+      # - key: RESEND_FROM
+      #   value: "CELR <noreply@u2xai.com>"
+      # - key: PUBLIC_URL
+      #   value: https://celr-procurement.onrender.com
+
+databases:
+  - name: celr-procurement-db
+    plan: starter
+    databaseName: celr_procurement
+    user: celr
+    region: oregon
+    postgresMajorVersion: 16
+    ipAllowList: []

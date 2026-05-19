@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+asyncpg>=0.30
+psycopg[binary]>=3.2
+pydantic[email]>=2.9
+python-multipart>=0.0.12
+mcp>=1.2.0
+python-dateutil>=2.9
+numpy>=2.0
+faker>=30.0
+openpyxl>=3.1
+requests>=2.31
