@@ -5,11 +5,15 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 
+// Palette stays the same in both themes. Grid/axis are mid-grey so they
+// remain readable on both light and dark backgrounds (Recharts SVG
+// doesn't re-render on classList changes).
 const COLOURS = ["#d24a3b","#4ed28e","#f5b53d","#5a87f0","#a874f0",
                  "#3bd2c4","#e96aa3","#e8d44a","#7a8aa6","#bc6347"];
 
-const GRID = "#2a2f3c";
-const AXIS = "#8b93a6";
+const GRID = "#94a3b8";  // slate-400
+const AXIS = "#64748b";  // slate-500
+const TOOLTIP_BG = "rgba(30, 41, 59, 0.95)";  // slate-800 w/ alpha — works on both
 
 interface BaseProps {
   data: any[];
@@ -27,7 +31,7 @@ export function LineChartC({ data, xKey, yKeys, height = 240, labels, formatY }:
         <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
         <XAxis dataKey={xKey} stroke={AXIS} tick={{ fontSize: 11 }}/>
         <YAxis stroke={AXIS} tick={{ fontSize: 11 }} tickFormatter={formatY}/>
-        <Tooltip contentStyle={{ background: "#1b1f2b", border: "1px solid #2a2f3c", fontSize: 12 }}/>
+        <Tooltip contentStyle={{ background: TOOLTIP_BG, color: "#e7e9ee", border: "1px solid #475569", fontSize: 12, borderRadius: 4 }}/>
         {yKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }}/>}
         {yKeys.map((k, i) => (
           <Line key={k} type="monotone" dataKey={k} stroke={COLOURS[i % COLOURS.length]}
@@ -45,7 +49,7 @@ export function AreaChartC({ data, xKey, yKeys, height = 240, labels, formatY }:
         <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
         <XAxis dataKey={xKey} stroke={AXIS} tick={{ fontSize: 11 }}/>
         <YAxis stroke={AXIS} tick={{ fontSize: 11 }} tickFormatter={formatY}/>
-        <Tooltip contentStyle={{ background: "#1b1f2b", border: "1px solid #2a2f3c", fontSize: 12 }}/>
+        <Tooltip contentStyle={{ background: TOOLTIP_BG, color: "#e7e9ee", border: "1px solid #475569", fontSize: 12, borderRadius: 4 }}/>
         {yKeys.map((k, i) => (
           <Area key={k} type="monotone" dataKey={k} stroke={COLOURS[i % COLOURS.length]}
                 fill={COLOURS[i % COLOURS.length]} fillOpacity={0.2} name={labels?.[k] ?? k}/>
@@ -72,7 +76,7 @@ export function BarChartC({ data, xKey, yKeys, height = 240, labels, formatY, ho
             <YAxis stroke={AXIS} tick={{ fontSize: 11 }} tickFormatter={formatY}/>
           </>
         )}
-        <Tooltip contentStyle={{ background: "#1b1f2b", border: "1px solid #2a2f3c", fontSize: 12 }}/>
+        <Tooltip contentStyle={{ background: TOOLTIP_BG, color: "#e7e9ee", border: "1px solid #475569", fontSize: 12, borderRadius: 4 }}/>
         {yKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }}/>}
         {yKeys.map((k, i) => (
           <Bar key={k} dataKey={k} fill={COLOURS[i % COLOURS.length]} name={labels?.[k] ?? k}/>
@@ -91,10 +95,10 @@ export function DonutChartC({ data, nameKey, valueKey, height = 240 }: {
         <Pie data={data} dataKey={valueKey} nameKey={nameKey}
              innerRadius="55%" outerRadius="85%" paddingAngle={1}>
           {data.map((_, i) => (
-            <Cell key={i} fill={COLOURS[i % COLOURS.length]} stroke="#1b1f2b"/>
+            <Cell key={i} fill={COLOURS[i % COLOURS.length]} stroke="transparent"/>
           ))}
         </Pie>
-        <Tooltip contentStyle={{ background: "#1b1f2b", border: "1px solid #2a2f3c", fontSize: 12 }}/>
+        <Tooltip contentStyle={{ background: TOOLTIP_BG, color: "#e7e9ee", border: "1px solid #475569", fontSize: 12, borderRadius: 4 }}/>
         <Legend wrapperStyle={{ fontSize: 11 }} verticalAlign="middle" align="right" layout="vertical"/>
       </PieChart>
     </ResponsiveContainer>

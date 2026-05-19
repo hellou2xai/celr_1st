@@ -1,10 +1,19 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0e1015" />
     <title>CELR Procurement</title>
+    <!-- Apply stored theme before the React bundle loads so we never flash
+         the wrong theme. Mirrors the logic in components/ThemeToggle.tsx. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("celr_theme");
+          if (t === "dark") document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="bg-bg text-fg antialiased">
     <div id="root"></div>

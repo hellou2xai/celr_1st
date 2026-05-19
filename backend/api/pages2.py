@@ -19,6 +19,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from .. import analytics
 from ..auth import current_user
 from ..db import fetch, fetchrow
+from ..exports.xlsx import rows_to_xlsx, xlsx_headers, XLSX_MEDIA
+from ..risk import classify as classify_risk, sql_case as risk_sql_case
 
 router = APIRouter(prefix="/api", tags=["pages2"])
 
@@ -30,6 +32,24 @@ def _u(user=Depends(current_user)):  # short auth dep
 # ============================================================== #
 # EXCESS STOCK
 # ============================================================== #
+
+@router.get("/excess-stock/export.xlsx")
+async def excess_stock_xlsx(velocity_months: int = 6, min_mos: float = 6,
+                             min_oh_value: float = 100,
+                             supplier: Optional[str] = None,
+                             dept: Optional[str] = None,
+                             limit: int = 10000, _=Depends(_u)):
+    data = await excess_stock(velocity_months, min_mos, min_oh_value,
+                              supplier, dept, limit, _=_)  # type: ignore
+    return Response(
+        content=rows_to_xlsx(
+            data["rows"], sheet_name="Excess Stock",
+            currency_cols=["Cost", "InventoryValue"],
+        ),
+        media_type=XLSX_MEDIA,
+        headers=xlsx_headers("excess-stock.xlsx"),
+    )
+
 
 @router.get("/excess-stock")
 async def excess_stock(velocity_months: int = 6, min_mos: float = 6,
@@ -151,6 +171,21 @@ async def items(q: Optional[str] = None, dept: Optional[str] = None,
 # ============================================================== #
 # PURCHASE ORDERS BROWSE + DETAIL
 # ============================================================== #
+
+@router.get("/pos/export.xlsx")
+async def pos_browse_xlsx(supplier: Optional[str] = None,
+                          status: Optional[str] = None,
+                          days: int = 365, limit: int = 10000, _=Depends(_u)):
+    data = await pos_browse(supplier, status, days, limit, _=_)  # type: ignore
+    return Response(
+        content=rows_to_xlsx(
+            data["rows"], sheet_name="Purchase Orders",
+            currency_cols=["Value"],
+        ),
+        media_type=XLSX_MEDIA,
+        headers=xlsx_headers("purchase-orders.xlsx"),
+    )
+
 
 @router.get("/pos")
 async def pos_browse(supplier: Optional[str] = None,
@@ -331,6 +366,20 @@ async def risk_calc_aliases(_=Depends(_u)):
 _UPC_RE = re.compile(r"^\s*(\d{6,14})\s*[,\t |x]\s*(\d+(?:\.\d+)?)?\s*$")
 
 
+@router.post("/risk-calc/export.xlsx")
+async def risk_calc_xlsx(payload: dict = Body(...), _=Depends(_u)):
+    data = await risk_calc(payload, _=_)  # type: ignore
+    rows = data.get("lines") or []
+    return Response(
+        content=rows_to_xlsx(
+            rows, sheet_name="Risk Calc",
+            currency_cols=["UnitCost", "LineCost"],
+        ),
+        media_type=XLSX_MEDIA,
+        headers=xlsx_headers("risk-calc.xlsx"),
+    )
+
+
 @router.post("/risk-calc")
 async def risk_calc(payload: dict = Body(...), _=Depends(_u)):
     raw = str(payload.get("lines", ""))
@@ -414,6 +463,24 @@ async def risk_calc(payload: dict = Body(...), _=Depends(_u)):
 # ============================================================== #
 # ORDER SUGGESTIONS (rich wrap around reorder_recommendations)
 # ============================================================== #
+
+@router.get("/order-suggestions/export.xlsx")
+async def order_suggestions_xlsx(weeks: int = 12, velocity_months: int = 18,
+                                  supplier: Optional[str] = None,
+                                  dept: Optional[str] = None,
+                                  min_velocity: Optional[float] = None,
+                                  limit: int = 10000, _=Depends(_u)):
+    data = await order_suggestions(weeks, velocity_months, supplier, dept,
+                                    min_velocity, limit, _=_)  # type: ignore
+    return Response(
+        content=rows_to_xlsx(
+            data["rows"], sheet_name="Order Suggestions",
+            currency_cols=["UnitCost", "UnitPrice"],
+        ),
+        media_type=XLSX_MEDIA,
+        headers=xlsx_headers("order-suggestions.xlsx"),
+    )
+
 
 @router.get("/order-suggestions")
 async def order_suggestions(weeks: int = 12, velocity_months: int = 18,
@@ -916,6 +983,32 @@ async def sales_movers(weeks: int = 12, top: int = 30, _=Depends(_u)):
         LIMIT $2
     """, weeks, top)
     return {"rows": rows, "weeks": weeks}
+
+
+@router.get("/sales/transactions/export.xlsx")
+async def sales_transactions_xlsx(days: int = 30, limit: int = 10000, _=Depends(_u)):
+    data = await sales_transactions(days, limit, _=_)  # type: ignore
+    return Response(
+        content=rows_to_xlsx(
+            data["rows"], sheet_name="Transactions",
+            currency_cols=["Total"],
+        ),
+        media_type=XLSX_MEDIA,
+        headers=xlsx_headers("transactions.xlsx"),
+    )
+
+
+@router.get("/sales/weekly-yoy/export.xlsx")
+async def sales_weekly_yoy_xlsx(weeks: int = 26, _=Depends(_u)):
+    data = await sales_weekly_yoy(weeks, _=_)  # type: ignore
+    return Response(
+        content=rows_to_xlsx(
+            data["rows"], sheet_name="Weekly YoY",
+            currency_cols=["NetRevenue"],
+        ),
+        media_type=XLSX_MEDIA,
+        headers=xlsx_headers("weekly-yoy.xlsx"),
+    )
 
 
 @router.get("/sales/transactions")

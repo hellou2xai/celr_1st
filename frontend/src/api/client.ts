@@ -45,11 +45,28 @@ export const api = {
         request<T>(p, { method: "POST", body: body == null ? null : JSON.stringify(body), params }),
 };
 
-// Convenience helper for binary downloads (Excel exports).
+// Convenience helper for binary downloads (Excel exports) via GET.
 export async function downloadFile(path: string, filename: string) {
   const res = await fetch(API_BASE + path, { credentials: "include" });
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   const blob = await res.blob();
+  _saveBlob(blob, filename);
+}
+
+// POST variant — used when the export needs a request body (e.g. risk calc).
+export async function downloadFilePost(path: string, body: unknown, filename: string) {
+  const res = await fetch(API_BASE + path, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  _saveBlob(blob, filename);
+}
+
+function _saveBlob(blob: Blob, filename: string) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = filename;

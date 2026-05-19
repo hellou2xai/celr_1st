@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { api } from "@/api/client";
+import { Download } from "lucide-react";
+import { api, downloadFile } from "@/api/client";
+import { Button } from "@/components/ui/button";
 import { money, num } from "@/lib/format";
 import { KpiTile } from "@/components/KpiTile";
 import { DataTable } from "@/components/DataTable";
@@ -42,16 +44,24 @@ export function OrderSuggestions() {
     <div>
       <h1 className="text-2xl font-bold mb-1">Purchase Order Suggestions</h1>
       <p className="text-sm text-muted mb-4">Velocity-based reorder list. Configure target cover and history window.</p>
-      <FilterBar fields={[
-        { name: "weeks", label: "Target weeks", type: "number", defaultValue: 12, width: "100px",
-          title: "How many weeks of cover the suggested qty should produce" },
-        { name: "velocity_months", label: "History (mo)", type: "number", defaultValue: 18, width: "100px",
-          title: "Lookback for avg-daily-sales calc" },
-        { name: "supplier", label: "Supplier", type: "text", width: "180px" },
-        { name: "dept", label: "Dept", type: "text", width: "150px" },
-        { name: "min_velocity", label: "Min avg/day", type: "number", width: "100px" },
-        { name: "limit", label: "Limit", type: "number", defaultValue: 500, width: "90px" },
-      ]}/>
+      <FilterBar
+        fields={[
+          { name: "weeks", label: "Target weeks", type: "number", defaultValue: 12, width: "100px",
+            title: "How many weeks of cover the suggested qty should produce" },
+          { name: "velocity_months", label: "History (mo)", type: "number", defaultValue: 18, width: "100px",
+            title: "Lookback for avg-daily-sales calc" },
+          { name: "supplier", label: "Supplier", type: "text", width: "180px" },
+          { name: "dept", label: "Dept", type: "text", width: "150px" },
+          { name: "min_velocity", label: "Min avg/day", type: "number", width: "100px" },
+          { name: "limit", label: "Limit", type: "number", defaultValue: 500, width: "90px" },
+        ]}
+        rightSlot={
+          <Button type="button" variant="outline" size="sm"
+            onClick={() => downloadFile(`/api/order-suggestions/export.xlsx?${params.toString()}`, "order-suggestions.xlsx")}>
+            <Download className="h-4 w-4 mr-1"/> Export Excel
+          </Button>
+        }
+      />
       {q.isLoading && <div className="text-muted">Loading…</div>}
       {q.data && (
         <>

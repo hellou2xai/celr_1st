@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { api } from "@/api/client";
+import { Download } from "lucide-react";
+import { api, downloadFile } from "@/api/client";
+import { Button } from "@/components/ui/button";
 import { money, num } from "@/lib/format";
 import { KpiTile } from "@/components/KpiTile";
 import { RiskBadge } from "@/components/RiskBadge";
@@ -56,6 +58,12 @@ export function ExcessStock() {
           { name: "dept", label: "Dept", type: "text", width: "150px" },
           { name: "limit", label: "Limit", type: "number", defaultValue: 500, width: "90px" },
         ]}
+        rightSlot={
+          <Button type="button" variant="outline" size="sm"
+            onClick={() => downloadFile(`/api/excess-stock/export.xlsx?${params.toString()}`, "excess-stock.xlsx")}>
+            <Download className="h-4 w-4 mr-1"/> Export Excel
+          </Button>
+        }
       />
       {q.isLoading && <div className="text-muted">Loading…</div>}
       {q.data && (

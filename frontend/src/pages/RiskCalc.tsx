@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api/client";
+import { Download } from "lucide-react";
+import { api, downloadFilePost } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -64,7 +65,14 @@ export function RiskCalc() {
 
       {result && (
         <>
-          <h2 className="text-lg font-semibold mb-2">Risk summary</h2>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-lg font-semibold">Risk summary</h2>
+            <Button type="button" variant="outline" size="sm"
+              onClick={() => downloadFilePost("/api/risk-calc/export.xlsx",
+                { lines: text, history_months: months }, "risk-calc.xlsx")}>
+              <Download className="h-4 w-4 mr-1"/> Export Excel
+            </Button>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             {result.summary.map(s => (
               <KpiTile key={s.Risk} label={s.Risk}

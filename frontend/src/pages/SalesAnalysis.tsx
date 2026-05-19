@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api/client";
+import { Download } from "lucide-react";
+import { api, downloadFile } from "@/api/client";
+import { Button } from "@/components/ui/button";
 import { money, num, pct, dt } from "@/lib/format";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LineChartC, BarChartC, moneyFmt } from "@/components/Chart";
@@ -82,6 +84,12 @@ function WeeklyYoY() {
   const yoyPct = prevTotal ? ((total - prevTotal) / prevTotal) * 100 : null;
   return (
     <>
+      <div className="flex justify-end mb-2">
+        <Button type="button" variant="outline" size="sm"
+          onClick={() => downloadFile("/api/sales/weekly-yoy/export.xlsx?weeks=26", "weekly-yoy.xlsx")}>
+          <Download className="h-4 w-4 mr-1"/> Export Excel
+        </Button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <Mini title={`${cur.length}-week total`} value={money(total)}/>
         <Mini title="Same window last year" value={money(prevTotal)}/>
@@ -147,6 +155,13 @@ function Transactions() {
   if (q.isLoading) return <div className="text-muted">Loading…</div>;
   if (!q.data) return null;
   return (
+    <>
+    <div className="flex justify-end mb-2">
+      <Button type="button" variant="outline" size="sm"
+        onClick={() => downloadFile("/api/sales/transactions/export.xlsx?days=30&limit=10000", "transactions.xlsx")}>
+        <Download className="h-4 w-4 mr-1"/> Export Excel
+      </Button>
+    </div>
     <div className="rounded border border-border overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-surface/60"><tr>
@@ -169,6 +184,7 @@ function Transactions() {
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 

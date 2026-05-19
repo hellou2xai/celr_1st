@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { api } from "@/api/client";
+import { Download } from "lucide-react";
+import { api, downloadFile } from "@/api/client";
+import { Button } from "@/components/ui/button";
 import { money, num, dt } from "@/lib/format";
 import { DataTable } from "@/components/DataTable";
 import { FilterBar } from "@/components/FilterBar";
@@ -37,13 +39,21 @@ export function POsBrowse() {
     <div>
       <h1 className="text-2xl font-bold mb-1">Purchase Orders</h1>
       <p className="text-sm text-muted mb-4">All POs in the lookback window.</p>
-      <FilterBar fields={[
-        { name: "days", label: "Days back", type: "number", defaultValue: 365, width: "90px" },
-        { name: "supplier", label: "Supplier", type: "text", width: "180px" },
-        { name: "status", label: "Status", type: "select", defaultValue: "",
-          options: [{label:"Any",value:""},...STATUS.map((s,i)=>({label:s,value:String(i)}))] },
-        { name: "limit", label: "Limit", type: "number", defaultValue: 500, width: "90px" },
-      ]}/>
+      <FilterBar
+        fields={[
+          { name: "days", label: "Days back", type: "number", defaultValue: 365, width: "90px" },
+          { name: "supplier", label: "Supplier", type: "text", width: "180px" },
+          { name: "status", label: "Status", type: "select", defaultValue: "",
+            options: [{label:"Any",value:""},...STATUS.map((s,i)=>({label:s,value:String(i)}))] },
+          { name: "limit", label: "Limit", type: "number", defaultValue: 500, width: "90px" },
+        ]}
+        rightSlot={
+          <Button type="button" variant="outline" size="sm"
+            onClick={() => downloadFile(`/api/pos/export.xlsx?${params.toString()}`, "purchase-orders.xlsx")}>
+            <Download className="h-4 w-4 mr-1"/> Export Excel
+          </Button>
+        }
+      />
       {q.isLoading && <div className="text-muted">Loading…</div>}
       {q.data && (
         <>

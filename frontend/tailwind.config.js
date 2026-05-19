@@ -6,27 +6,25 @@ export default {
     container: { center: true, padding: "1rem" },
     extend: {
       colors: {
-        // Slate-warm palette tuned for dense data UI.
-        bg:       "hsl(220 13% 8%)",
-        surface:  "hsl(220 13% 12%)",
-        card:     "hsl(220 13% 14%)",
-        border:   "hsl(220 10% 22%)",
-        muted:    "hsl(220 10% 60%)",
-        fg:       "hsl(220 15% 92%)",
+        // Every token is a CSS variable so light/dark toggle works at runtime.
+        bg:        "hsl(var(--bg))",
+        surface:   "hsl(var(--surface))",
+        card:      "hsl(var(--card))",
+        border:    "hsl(var(--border))",
+        muted:     "hsl(var(--muted))",
+        fg:        "hsl(var(--fg))",
 
-        // Semantic risk colours.
-        accent:   "hsl(8 70% 53%)",
-        good:     "hsl(150 55% 50%)",
-        warn:     "hsl(40 90% 55%)",
-        bad:      "hsl(0 75% 60%)",
-        info:     "hsl(215 80% 60%)",
+        accent:    "hsl(var(--accent))",
+        good:      "hsl(var(--good))",
+        warn:      "hsl(var(--warn))",
+        bad:       "hsl(var(--bad))",
+        info:      "hsl(var(--info))",
 
-        // shadcn tokens
-        primary: { DEFAULT: "hsl(8 70% 53%)", foreground: "hsl(0 0% 100%)" },
-        secondary: { DEFAULT: "hsl(220 10% 22%)", foreground: "hsl(220 15% 92%)" },
-        destructive: { DEFAULT: "hsl(0 75% 60%)", foreground: "hsl(0 0% 100%)" },
-        input: "hsl(220 10% 22%)",
-        ring:  "hsl(8 70% 53%)",
+        primary:     { DEFAULT: "hsl(var(--accent))",      foreground: "hsl(var(--accent-fg))" },
+        secondary:   { DEFAULT: "hsl(var(--surface))",     foreground: "hsl(var(--fg))" },
+        destructive: { DEFAULT: "hsl(var(--bad))",         foreground: "hsl(var(--accent-fg))" },
+        input:       "hsl(var(--border))",
+        ring:        "hsl(var(--accent))",
       },
       borderRadius: {
         lg: "0.5rem", md: "0.375rem", sm: "0.25rem",

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface NavItem {
   to: string;
@@ -91,20 +92,23 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-border p-2 flex items-center justify-between gap-2">
+      <div className="border-t border-border p-2 flex items-center gap-2">
         {!collapsed && (
           <div className="flex items-center gap-2 text-xs text-muted">
             <span className="h-2 w-2 rounded-full bg-good"/>
             <span>online</span>
           </div>
         )}
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          className="ml-auto text-muted hover:text-fg p-1"
-          title={collapsed ? "Expand" : "Collapse"}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4"/> : <ChevronLeft className="h-4 w-4"/>}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle collapsed={collapsed}/>
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            className="text-muted hover:text-fg p-1"
+            title={collapsed ? "Expand" : "Collapse"}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4"/> : <ChevronLeft className="h-4 w-4"/>}
+          </button>
+        </div>
       </div>
     </aside>
   );
